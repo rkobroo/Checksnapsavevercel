@@ -14,3 +14,28 @@ export const fixThumbnail = (url: string) => {
   const toReplace = "https://snapinsta.app/photo.php?photo=";
   return url.includes(toReplace) ? decodeURIComponent(url.replace(toReplace, "")) : url;
 };
+
+export const generateCleanFilename = (title: string, type: string, extension?: string): string => {
+  if (!title) return `download.${extension || type}`;
+  
+  // Remove invalid filename characters and clean up
+  let cleanTitle = title
+    .replace(/[<>:"/\\|?*]/g, '') // Remove invalid characters
+    .replace(/\s+/g, ' ') // Normalize whitespace
+    .trim()
+    .substring(0, 100); // Limit length
+  
+  // Add extension if provided
+  if (extension) {
+    return `${cleanTitle}.${extension}`;
+  }
+  
+  // Default extensions based on type
+  const defaultExtensions = {
+    'video': 'mp4',
+    'image': 'jpg'
+  };
+  
+  const ext = defaultExtensions[type as keyof typeof defaultExtensions] || 'mp4';
+  return `${cleanTitle}.${ext}`;
+};

@@ -11,6 +11,15 @@ const fixThumbnail = (url) => {
   const toReplace = "https://snapinsta.app/photo.php?photo=";
   return url.includes(toReplace) ? decodeURIComponent(url.replace(toReplace, "")) : url;
 };
+const generateCleanFilename = (title, type, extension) => {
+  let cleanTitle = title.replace(/[<>:"/\\|?*]/g, "").replace(/\s+/g, " ").trim().substring(0, 100);
+  const defaultExtensions = {
+    "video": "mp4",
+    "image": "jpg"
+  };
+  const ext = defaultExtensions[type] || "mp4";
+  return `${cleanTitle}.${ext}`;
+};
 
 function decodeSnapApp(args) {
   let [h, u, n, t, e, r] = args;
@@ -70,7 +79,116 @@ function decryptSnaptik(data) {
   return getDecodedSnaptik(decodeSnapApp(getEncodedSnapApp(data)));
 }
 
+const enhancedDownload = async (url) => {
+  try {
+    const platform = getPlatform(url);
+    const result = await snapsave(url);
+    if (!result.success || !result.data) {
+      return { success: false, message: result.message || "Download failed" };
+    }
+    const { data } = result;
+    const bestMedia = getBestQualityMedia(data.media || []);
+    if (!bestMedia || !bestMedia.url) {
+      return { success: false, message: "No download links found" };
+    }
+    const filename = generateCleanFilename(
+      data.title || bestMedia.title || "video",
+      bestMedia.type || "video"
+    );
+    return {
+      success: true,
+      data: {
+        title: data.title || bestMedia.title || `${platform} Media`,
+        description: data.description || bestMedia.description || "",
+        duration: data.duration || bestMedia.duration || "",
+        author: data.author || bestMedia.author || "",
+        thumbnail: data.thumbnail || bestMedia.thumbnail || data.preview || "",
+        preview: data.preview || "",
+        downloadUrl: bestMedia.url,
+        type: bestMedia.type || "video",
+        quality: bestMedia.quality || 0,
+        filename,
+        platform
+      }
+    };
+  } catch (error) {
+    return {
+      success: false,
+      message: error instanceof Error ? error.message : "Download failed"
+    };
+  }
+};
+const batchDownload = async (urls) => {
+  try {
+    const results = await Promise.allSettled(
+      urls.map((url) => enhancedDownload(url))
+    );
+    const successful = results.filter(
+      (result) => result.status === "fulfilled" && result.value.success
+    ).map((result) => result.value.data).filter(Boolean);
+    const failed = results.filter((result) => result.status === "rejected").length;
+    return {
+      success: true,
+      message: failed > 0 ? `${failed} downloads failed` : void 0,
+      data: successful
+    };
+  } catch (error) {
+    return {
+      success: false,
+      message: error instanceof Error ? error.message : "Batch download failed"
+    };
+  }
+};
+function getPlatform(url) {
+  if (url.includes("tiktok")) return "TikTok";
+  if (url.includes("twitter") || url.includes("x.com")) return "Twitter/X";
+  if (url.includes("facebook")) return "Facebook";
+  if (url.includes("instagram")) return "Instagram";
+  return "Unknown";
+}
+function getBestQualityMedia(media) {
+  if (!media.length) return null;
+  const sortedMedia = [...media].sort((a, b) => (b.quality || 0) - (a.quality || 0));
+  const videoItem = sortedMedia.find((item) => item.type === "video");
+  if (videoItem) return videoItem;
+  return sortedMedia[0];
+}
+const getDownloadInfo = async (url) => {
+  try {
+    const platform = getPlatform(url);
+    const basicInfo = {
+      success: true,
+      data: {
+        title: `${platform} Media`,
+        description: "",
+        duration: "",
+        author: "",
+        thumbnail: "",
+        preview: "",
+        downloadUrl: "",
+        type: "video",
+        quality: 0,
+        filename: `${platform.toLowerCase()}_media.mp4`,
+        platform
+      }
+    };
+    enhancedDownload(url).then((result) => {
+      if (result.success && result.data) {
+      }
+    }).catch(() => {
+    });
+    return basicInfo;
+  } catch (error) {
+    return {
+      success: false,
+      message: error instanceof Error ? error.message : "Failed to get download info"
+    };
+  }
+};
+
 let cheerioLoad = null;
+const responseCache = /* @__PURE__ */ new Map();
+const CACHE_DURATION = 5 * 60 * 1e3;
 async function getCheerioLoad() {
   if (!cheerioLoad) {
     const mod = await import('cheerio');
@@ -78,8 +196,43 @@ async function getCheerioLoad() {
   }
   return cheerioLoad;
 }
+function extractCleanTitle(text, platform) {
+  if (!text) return "";
+  let clean = text.replace(/\s+/g, " ").trim();
+  const unwantedPrefixes = {
+    "tiktok": ["TikTok", "Video", "Download", "Share"],
+    "twitter": ["Twitter", "X", "Video", "Download", "Share"],
+    "facebook": ["Facebook", "Video", "Watch", "Share", "Download"],
+    "instagram": ["Instagram", "Video", "Post", "Reel", "Download"]
+  };
+  const prefixes = unwantedPrefixes[platform] || [];
+  for (const prefix of prefixes) {
+    clean = clean.replace(new RegExp(`^${prefix}[\\s:]*`, "i"), "").trim();
+  }
+  clean = clean.replace(/\|\s*[^|]+$/, "").trim();
+  clean = clean.replace(/\s+on\s+[A-Za-z]+$/, "").trim();
+  return clean || `${platform.charAt(0).toUpperCase() + platform.slice(1)} Media`;
+}
+function extractDuration(text) {
+  if (!text) return "";
+  const durationMatch = text.match(/(\d{1,2}):(\d{2})/);
+  if (durationMatch) {
+    return `${durationMatch[1]}:${durationMatch[2]}`;
+  }
+  return "";
+}
+function extractAuthor(text) {
+  if (!text) return "";
+  const authorMatch = text.match(/by\s+([^,\n]+)/i) || text.match(/@(\w+)/) || text.match(/([A-Z][a-z]+)\s+[A-Z][a-z]+/);
+  return authorMatch ? authorMatch[1].trim() : "";
+}
 const snapsave = async (url) => {
   try {
+    const cacheKey = url;
+    const cached = responseCache.get(cacheKey);
+    if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
+      return { success: true, data: cached.data };
+    }
     const regexList = [facebookRegex, instagramRegex, twitterRegex, tiktokRegex];
     const isValid = regexList.some((regex) => url.match(regex));
     if (!isValid) return { success: false, message: "Invalid URL" };
@@ -142,6 +295,9 @@ const snapsave = async (url) => {
       let _url = bestLink?.url;
       const type = bestLink?.type || "video";
       let description = $3(".video-title").text().trim() || $3(".video-des").text().trim() || $3("h3").first().text().trim() || $3(".desc").text().trim() || $3(".video-description").text().trim() || $3("p").first().text().trim() || $3(".title").text().trim();
+      const title = extractCleanTitle(description, "tiktok");
+      const duration = extractDuration($3(".video-duration").text().trim() || $3(".duration").text().trim() || "");
+      const author = extractAuthor($3(".author").text().trim() || $3(".username").text().trim() || "");
       if (description) {
         description = description.replace(/\s+/g, " ").trim();
         description = description.replace(/^(TikTok|Video|Download|Share)[\s:]*/, "").trim();
@@ -159,7 +315,28 @@ const snapsave = async (url) => {
       if (!description || description.length < 3) {
         description = "TikTok Video";
       }
-      return { success: true, data: { description, preview, media: [{ url: _url, type }] } };
+      const result2 = {
+        success: true,
+        data: {
+          title: title || "TikTok Video",
+          description,
+          preview,
+          duration,
+          author,
+          thumbnail: preview,
+          media: [{
+            url: _url,
+            type,
+            title: title || "TikTok Video",
+            duration,
+            author,
+            thumbnail: preview,
+            quality: bestLink?.quality || 0
+          }]
+        }
+      };
+      responseCache.set(cacheKey, { data: result2.data, timestamp: Date.now() });
+      return result2;
     }
     if (isTwitter) {
       const response2 = await fetch("https://twitterdownloader.snapsave.app/", {
@@ -213,6 +390,9 @@ const snapsave = async (url) => {
       let _url = bestTwitterLink?.url;
       const type = bestTwitterLink?.type || "video";
       let description = $22(".videotikmate-middle > p > span").text().trim() || $22(".video-title").text().trim() || $22("p").first().text().trim() || $22(".desc").text().trim() || $22("h3").text().trim();
+      const title = extractCleanTitle(description, "twitter");
+      const duration = extractDuration($22(".video-duration").text().trim() || $22(".duration").text().trim() || "");
+      const author = extractAuthor($22(".author").text().trim() || $22(".username").text().trim() || "");
       if (description) {
         description = description.replace(/\s+/g, " ").trim();
         description = description.replace(/^(Twitter|X|Video|Download|Share)[\s:]*/, "").trim();
@@ -221,7 +401,28 @@ const snapsave = async (url) => {
       if (!description || description.length < 3) {
         description = "Twitter/X Post";
       }
-      return { success: true, data: { description, preview, media: [{ url: _url, type }] } };
+      const result2 = {
+        success: true,
+        data: {
+          title: title || "Twitter/X Post",
+          description,
+          preview,
+          duration,
+          author,
+          thumbnail: preview,
+          media: [{
+            url: _url,
+            type,
+            title: title || "Twitter/X Post",
+            duration,
+            author,
+            thumbnail: preview,
+            quality: bestTwitterLink?.quality || 0
+          }]
+        }
+      };
+      responseCache.set(cacheKey, { data: result2.data, timestamp: Date.now() });
+      return result2;
     }
     const response = await fetch("https://snapsave.app/action.php?lang=en", {
       method: "POST",
@@ -242,15 +443,23 @@ const snapsave = async (url) => {
     const media = [];
     if ($("table.table").length || $("article.media > figure").length) {
       let description = $("span.video-des").text().trim() || $(".video-title").text().trim() || $("h1").first().text().trim() || $("h2").first().text().trim() || $("h3").first().text().trim() || $(".title").text().trim() || $(".desc").text().trim() || $(".video-description").text().trim() || $("p").first().text().trim() || $("meta[property='og:title']").attr("content") || $("title").text().trim();
+      const platform = url.includes("instagram") ? "instagram" : "facebook";
+      const title = extractCleanTitle(description, platform);
+      const duration = extractDuration($(".video-duration").text().trim() || $(".duration").text().trim() || "");
+      const author = extractAuthor($(".author").text().trim() || $(".username").text().trim() || "");
       if (description) {
         description = description.replace(/\s+/g, " ").trim();
-        description = description.replace(/^(Facebook|Video|Watch|Share|Download)[\s:]*/, "").trim();
+        description = description.replace(/^(Facebook|Instagram|Video|Watch|Share|Download)[\s:]*/, "").trim();
         description = description.replace(/\|\s*Facebook$/, "").trim();
         description = description.replace(/on Facebook$/, "").trim();
       }
-      const preview = $("article.media > figure").find("img").attr("src") || $("img[src*='fbcdn']").first().attr("src") || $(".video-preview img").first().attr("src") || $("img").first().attr("src");
-      data.description = description && description.length >= 3 ? description : "Facebook Video";
+      const preview = $("article.media > figure").find("img").attr("src") || $("img[src*='fbcdn']").first().attr("src") || $("img[src*='instagram']").first().attr("src") || $(".video-preview img").first().attr("src") || $("img").first().attr("src");
+      data.title = title || `${platform.charAt(0).toUpperCase() + platform.slice(1)} Media`;
+      data.description = description && description.length >= 3 ? description : `${platform.charAt(0).toUpperCase() + platform.slice(1)} Video`;
       data.preview = preview;
+      data.duration = duration;
+      data.author = author;
+      data.thumbnail = preview;
       if ($("table.table").length) {
         const mediaItems = [];
         $("tbody > tr").each((_, el) => {
@@ -269,19 +478,16 @@ const snapsave = async (url) => {
             resolution,
             ...shouldRender ? { shouldRender } : {},
             url: _url,
-            type: resolution ? "video" : "image"
+            type: resolution ? "video" : "image",
+            title: data.title,
+            duration: data.duration,
+            author: data.author,
+            thumbnail: data.thumbnail,
+            quality: getQualityScore(resolution)
           });
         });
         mediaItems.sort((a, b) => {
-          const getQualityScore = (res) => {
-            if (res.includes("1080") || res.includes("HD")) return 1e3;
-            if (res.includes("720")) return 720;
-            if (res.includes("480")) return 480;
-            if (res.includes("360")) return 360;
-            const match = res.match(/(\d+)p/);
-            return match ? parseInt(match[1]) : 0;
-          };
-          return getQualityScore(b.resolution) - getQualityScore(a.resolution);
+          return (b.quality || 0) - (a.quality || 0);
         });
         media.push(...mediaItems);
       } else if ($("div.card").length) {
@@ -297,6 +503,10 @@ const snapsave = async (url) => {
           cardItems.push({
             url: url2,
             type,
+            title: data.title,
+            duration: data.duration,
+            author: data.author,
+            thumbnail: data.thumbnail,
             quality: aText.includes("HD") || aText.includes("1080") ? 1e3 : aText.includes("720") ? 720 : aText.includes("480") ? 480 : 360
           });
         });
@@ -340,6 +550,9 @@ const snapsave = async (url) => {
             thumbnail: itemThumbnail ? fixThumbnail(itemThumbnail) : void 0
           } : {},
           type,
+          title: data.title,
+          duration: data.duration,
+          author: data.author,
           quality: spanText.includes("HD") || url2?.includes("hd") ? 1e3 : spanText.includes("720") ? 720 : 360
         });
       });
@@ -350,10 +563,12 @@ const snapsave = async (url) => {
       });
     }
     if (!media.length) return { success: false, message: "Blank data" };
-    return { success: true, data: { ...data, media } };
+    const result = { success: true, data: { ...data, media } };
+    responseCache.set(cacheKey, { data: result.data, timestamp: Date.now() });
+    return result;
   } catch (e) {
     return { success: false, message: "Something went wrong" };
   }
 };
 
-export { snapsave };
+export { batchDownload, enhancedDownload, getDownloadInfo, snapsave };

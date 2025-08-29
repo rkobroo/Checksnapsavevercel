@@ -4,11 +4,20 @@ export interface SnapSaveDownloaderMedia {
   thumbnail?: string;
   type?: "image" | "video";
   url?: string;
+  title?: string;
+  duration?: string;
+  author?: string;
+  description?: string;
+  quality?: number;
 }
 
 export interface SnapSaveDownloaderData {
   description?: string;
   preview?: string;
+  title?: string;
+  duration?: string;
+  author?: string;
+  thumbnail?: string;
   media?: SnapSaveDownloaderMedia[];
 }
 
