@@ -1,4 +1,8 @@
+// Cache for cheerio loader and responses
 let cheerioLoad: ((html: string) => ReturnType<typeof import("cheerio")["load"]>) | null = null;
+const responseCache = new Map<string, { data: any; timestamp: number }>();
+const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
+
 async function getCheerioLoad () {
   if (!cheerioLoad) {
     const mod = await import("cheerio");
@@ -6,12 +10,64 @@ async function getCheerioLoad () {
   }
   return cheerioLoad;
 }
+
+// Helper function to extract clean title from text
+function extractCleanTitle(text: string, platform: string): string {
+  if (!text) return "";
+  let clean = text.replace(/\s+/g, ' ').trim();
+  const unwantedPrefixes = {
+    'tiktok': ['TikTok', 'Video', 'Download', 'Share'],
+    'twitter': ['Twitter', 'X', 'Video', 'Download', 'Share'],
+    'facebook': ['Facebook', 'Video', 'Watch', 'Share', 'Download'],
+    'instagram': ['Instagram', 'Video', 'Post', 'Reel', 'Download']
+  };
+  
+  const prefixes = unwantedPrefixes[platform as keyof typeof unwantedPrefixes] || [];
+  for (const prefix of prefixes) {
+    clean = clean.replace(new RegExp(`^${prefix}[\\s:]*`, 'i'), '').trim();
+  }
+  
+  // Remove common suffixes
+  clean = clean.replace(/\|\s*[^|]+$/, '').trim();
+  clean = clean.replace(/\s+on\s+[A-Za-z]+$/, '').trim();
+  
+  return clean || `${platform.charAt(0).toUpperCase() + platform.slice(1)} Media`;
+}
+
+// Helper function to extract duration from text
+function extractDuration(text: string): string {
+  if (!text) return "";
+  const durationMatch = text.match(/(\d{1,2}):(\d{2})/);
+  if (durationMatch) {
+    return `${durationMatch[1]}:${durationMatch[2]}`;
+  }
+  return "";
+}
+
+// Helper function to extract author from text
+function extractAuthor(text: string): string {
+  if (!text) return "";
+  const authorMatch = text.match(/by\s+([^,\n]+)/i) || 
+                     text.match(/@(\w+)/) ||
+                     text.match(/([A-Z][a-z]+)\s+[A-Z][a-z]+/);
+  return authorMatch ? authorMatch[1].trim() : "";
+}
 import { facebookRegex, fixThumbnail, instagramRegex, normalizeURL, tiktokRegex, twitterRegex, userAgent } from "./utils";
 import type { SnapSaveDownloaderData, SnapSaveDownloaderMedia, SnapSaveDownloaderResponse } from "./types";
 import { decryptSnapSave, decryptSnaptik } from "./decrypter";
 
+// Export enhanced functions
+export { enhancedDownload, batchDownload, getDownloadInfo } from './enhanced-downloader';
+
 export const snapsave = async (url: string): Promise<SnapSaveDownloaderResponse> => {
   try {
+    // Check cache first for faster response
+    const cacheKey = url;
+    const cached = responseCache.get(cacheKey);
+    if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
+      return { success: true, data: cached.data };
+    }
+
     const regexList = [facebookRegex, instagramRegex, twitterRegex, tiktokRegex];
     const isValid = regexList.some(regex => url.match(regex));
     if (!isValid) return { success: false, message: "Invalid URL" };
@@ -87,7 +143,7 @@ export const snapsave = async (url: string): Promise<SnapSaveDownloaderResponse>
       let _url = bestLink?.url;
       const type = bestLink?.type || "video";
       
-      // Enhanced description extraction for TikTok
+      // Enhanced metadata extraction for TikTok
       let description = $3(".video-title").text().trim() ||
                        $3(".video-des").text().trim() ||
                        $3("h3").first().text().trim() ||
@@ -96,6 +152,11 @@ export const snapsave = async (url: string): Promise<SnapSaveDownloaderResponse>
                        $3("p").first().text().trim() ||
                        $3(".title").text().trim();
       
+      // Extract clean title, duration, and author
+      const title = extractCleanTitle(description, 'tiktok');
+      const duration = extractDuration($3(".video-duration").text().trim() || $3(".duration").text().trim() || "");
+      const author = extractAuthor($3(".author").text().trim() || $3(".username").text().trim() || "");
+      
       // Clean up description and add fallback
       if (description) {
         description = description.replace(/\s+/g, ' ').trim();
@@ -103,7 +164,7 @@ export const snapsave = async (url: string): Promise<SnapSaveDownloaderResponse>
         description = description.replace(/^(TikTok|Video|Download|Share)[\s:]*/, '').trim();
       }
       
-      // Try multiple selectors for preview
+      // Try multiple selectors for preview/thumbnail
       let preview = $3("#thumbnail").attr("src") ||
                    $3("img[src*='tiktok']").first().attr("src") ||
                    $3(".video-thumb img").first().attr("src") ||
@@ -125,7 +186,31 @@ export const snapsave = async (url: string): Promise<SnapSaveDownloaderResponse>
         description = "TikTok Video";
       }
       
-      return { success: true, data: { description, preview, media: [{ url: _url, type }] } };
+      const result = { 
+        success: true, 
+        data: { 
+          title: title || "TikTok Video",
+          description, 
+          preview, 
+          duration,
+          author,
+          thumbnail: preview,
+          media: [{ 
+            url: _url, 
+            type,
+            title: title || "TikTok Video",
+            duration,
+            author,
+            thumbnail: preview,
+            quality: bestLink?.quality || 0
+          }] 
+        } 
+      };
+      
+      // Cache the result for faster future responses
+      responseCache.set(cacheKey, { data: result.data, timestamp: Date.now() });
+      
+      return result;
     }
     if (isTwitter) {
       const response = await fetch("https://twitterdownloader.snapsave.app/", {
@@ -189,12 +274,17 @@ export const snapsave = async (url: string): Promise<SnapSaveDownloaderResponse>
       let _url = bestTwitterLink?.url;
       const type = bestTwitterLink?.type || "video";
       
-      // Enhanced description extraction for Twitter/X
+      // Enhanced metadata extraction for Twitter/X
       let description = $2(".videotikmate-middle > p > span").text().trim() ||
                        $2(".video-title").text().trim() ||
                        $2("p").first().text().trim() ||
                        $2(".desc").text().trim() ||
                        $2("h3").text().trim();
+      
+      // Extract clean title, duration, and author
+      const title = extractCleanTitle(description, 'twitter');
+      const duration = extractDuration($2(".video-duration").text().trim() || $2(".duration").text().trim() || "");
+      const author = extractAuthor($2(".author").text().trim() || $2(".username").text().trim() || "");
       
       // Clean up description
       if (description) {
@@ -211,7 +301,31 @@ export const snapsave = async (url: string): Promise<SnapSaveDownloaderResponse>
         description = "Twitter/X Post";
       }
       
-      return { success: true, data: { description, preview, media: [{ url: _url, type }] } };
+      const result = { 
+        success: true, 
+        data: { 
+          title: title || "Twitter/X Post",
+          description, 
+          preview, 
+          duration,
+          author,
+          thumbnail: preview,
+          media: [{ 
+            url: _url, 
+            type,
+            title: title || "Twitter/X Post",
+            duration,
+            author,
+            thumbnail: preview,
+            quality: bestTwitterLink?.quality || 0
+          }] 
+        } 
+      };
+      
+      // Cache the result for faster future responses
+      responseCache.set(cacheKey, { data: result.data, timestamp: Date.now() });
+      
+      return result;
     }
 
     const response = await fetch("https://snapsave.app/action.php?lang=en", {
@@ -234,7 +348,7 @@ export const snapsave = async (url: string): Promise<SnapSaveDownloaderResponse>
     const media: SnapSaveDownloaderMedia[] = [];
 
     if ($("table.table").length || $("article.media > figure").length) {
-      // Enhanced Facebook description/title extraction
+      // Enhanced Facebook/Instagram metadata extraction
       let description = $("span.video-des").text().trim() ||
                        $(".video-title").text().trim() ||
                        $("h1").first().text().trim() ||
@@ -247,22 +361,33 @@ export const snapsave = async (url: string): Promise<SnapSaveDownloaderResponse>
                        $("meta[property='og:title']").attr("content") ||
                        $("title").text().trim();
       
-      // Clean up Facebook description
+      // Extract clean title, duration, and author
+      const platform = url.includes('instagram') ? 'instagram' : 'facebook';
+      const title = extractCleanTitle(description, platform);
+      const duration = extractDuration($(".video-duration").text().trim() || $(".duration").text().trim() || "");
+      const author = extractAuthor($(".author").text().trim() || $(".username").text().trim() || "");
+      
+      // Clean up Facebook/Instagram description
       if (description) {
         description = description.replace(/\s+/g, ' ').trim();
         // Remove common Facebook unwanted text
-        description = description.replace(/^(Facebook|Video|Watch|Share|Download)[\s:]*/, '').trim();
+        description = description.replace(/^(Facebook|Instagram|Video|Watch|Share|Download)[\s:]*/, '').trim();
         description = description.replace(/\|\s*Facebook$/, '').trim();
         description = description.replace(/on Facebook$/, '').trim();
       }
       
       const preview = $("article.media > figure").find("img").attr("src") ||
                      $("img[src*='fbcdn']").first().attr("src") ||
+                     $("img[src*='instagram']").first().attr("src") ||
                      $(".video-preview img").first().attr("src") ||
                      $("img").first().attr("src");
       
-      data.description = description && description.length >= 3 ? description : "Facebook Video";
+      data.title = title || `${platform.charAt(0).toUpperCase() + platform.slice(1)} Media`;
+      data.description = description && description.length >= 3 ? description : `${platform.charAt(0).toUpperCase() + platform.slice(1)} Video`;
       data.preview = preview;
+      data.duration = duration;
+      data.author = author;
+      data.thumbnail = preview;
       
       if ($("table.table").length) {
         // Sort media by quality (prioritize HD)
@@ -282,25 +407,22 @@ export const snapsave = async (url: string): Promise<SnapSaveDownloaderResponse>
             _url = _url.replace("&dl=1&dl=1", "&dl=1");
           }
           
-          mediaItems.push({
-            resolution,
-            ...shouldRender ? { shouldRender } : {},
-            url: _url,
-            type: resolution ? "video" : "image"
-          });
+                  mediaItems.push({
+          resolution,
+          ...shouldRender ? { shouldRender } : {},
+          url: _url,
+          type: resolution ? "video" : "image",
+          title: data.title,
+          duration: data.duration,
+          author: data.author,
+          thumbnail: data.thumbnail,
+          quality: getQualityScore(resolution)
+        });
         });
         
         // Sort by quality priority (HD first, then descending resolution)
         mediaItems.sort((a, b) => {
-          const getQualityScore = (res: string) => {
-            if (res.includes("1080") || res.includes("HD")) return 1000;
-            if (res.includes("720")) return 720;
-            if (res.includes("480")) return 480;
-            if (res.includes("360")) return 360;
-            const match = res.match(/(\d+)p/);
-            return match ? parseInt(match[1]) : 0;
-          };
-          return getQualityScore(b.resolution) - getQualityScore(a.resolution);
+          return (b.quality || 0) - (a.quality || 0);
         });
         
         media.push(...mediaItems);
@@ -317,13 +439,17 @@ export const snapsave = async (url: string): Promise<SnapSaveDownloaderResponse>
             url = url.replace("&dl=1&dl=1", "&dl=1");
           }
           
-          cardItems.push({
-            url,
-            type,
-            quality: aText.includes("HD") || aText.includes("1080") ? 1000 : 
-                    aText.includes("720") ? 720 : 
-                    aText.includes("480") ? 480 : 360
-          });
+                  cardItems.push({
+          url,
+          type,
+          title: data.title,
+          duration: data.duration,
+          author: data.author,
+          thumbnail: data.thumbnail,
+          quality: aText.includes("HD") || aText.includes("1080") ? 1000 : 
+                  aText.includes("720") ? 720 : 
+                  aText.includes("480") ? 480 : 360
+        });
         });
         
         // Sort by quality (HD first)
@@ -376,6 +502,9 @@ export const snapsave = async (url: string): Promise<SnapSaveDownloaderResponse>
             thumbnail: itemThumbnail ? fixThumbnail(itemThumbnail) : undefined
           } : {},
           type,
+          title: data.title,
+          duration: data.duration,
+          author: data.author,
           quality: spanText.includes("HD") || url?.includes("hd") ? 1000 : 
                   spanText.includes("720") ? 720 : 360
         });
@@ -389,7 +518,13 @@ export const snapsave = async (url: string): Promise<SnapSaveDownloaderResponse>
       });
     }
     if (!media.length) return { success: false, message: "Blank data" };
-    return { success: true, data: { ...data, media } };
+    
+    const result = { success: true, data: { ...data, media } };
+    
+    // Cache the result for faster future responses
+    responseCache.set(cacheKey, { data: result.data, timestamp: Date.now() });
+    
+    return result;
   }
   catch (e) {
     return { success: false, message: "Something went wrong" };
