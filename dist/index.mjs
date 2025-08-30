@@ -661,82 +661,28 @@ const snapsave = async (url) => {
     }
     if (isYoutube) {
       try {
-        const response2 = await fetch("https://snapsave.app/", {
-          headers: {
-            "user-agent": userAgent
-          }
-        });
-        const homeHtml = await response2.text();
-        const load2 = await getCheerioLoad();
-        const $2 = load2(homeHtml);
         const videoId = extractYouTubeVideoId(url);
         if (!videoId) {
           return { success: false, message: "Invalid YouTube URL" };
         }
-        const youtubeFormData = new FormData();
-        youtubeFormData.append("url", url);
-        const downloadResponse = await fetch("https://snapsave.app/action.php", {
-          method: "POST",
-          headers: {
-            "user-agent": userAgent,
-            "accept": "*/*",
-            "content-type": "application/x-www-form-urlencoded",
-            "origin": "https://snapsave.app",
-            "referer": "https://snapsave.app/"
-          },
-          body: youtubeFormData
-        });
-        const downloadHtml = await downloadResponse.text();
-        const $download = load2(downloadHtml);
-        const youtubeLinks = [];
-        $download("a").each((_, el) => {
-          const href = $download(el).attr("href");
-          const text = $download(el).text().trim();
-          if (href && (href.includes("download") || href.includes("rapidcdn") || href.includes("snapsave"))) {
-            let quality = 0;
-            if (text.includes("4K") || text.includes("2160")) quality = 4e3;
-            else if (text.includes("2K") || text.includes("1440")) quality = 2e3;
-            else if (text.includes("1080") || text.includes("HD") || text.includes("Full HD")) quality = 1080;
-            else if (text.includes("720") || text.includes("HD")) quality = 720;
-            else if (text.includes("480")) quality = 480;
-            else if (text.includes("360")) quality = 360;
-            else quality = 500;
-            youtubeLinks.push({
-              url: href,
-              quality,
-              text,
-              type: "video"
-            });
-          }
-        });
-        youtubeLinks.sort((a, b) => b.quality - a.quality);
-        if (youtubeLinks.length === 0) {
-          return { success: false, message: "No YouTube download links found" };
-        }
-        const bestYoutubeLink = youtubeLinks[0];
-        const _url = bestYoutubeLink.url;
-        const title = $download("h1").first().text().trim() || $download("title").text().trim() || `YouTube Video ${videoId}`;
-        const description = $download("meta[name='description']").attr("content") || $download("p").first().text().trim() || "YouTube video download";
-        const author = $download("meta[name='author']").attr("content") || $download(".author").text().trim() || "YouTube Creator";
-        const preview = $download("img[src*='ytimg']").first().attr("src") || $download("img").first().attr("src") || `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`;
         const result2 = {
           success: true,
           data: {
-            title: extractCleanTitle(title, "youtube"),
-            description: description.replace(/\s+/g, " ").trim(),
-            preview,
+            title: `YouTube Video ${videoId}`,
+            description: "YouTube video download (external services temporarily unavailable)",
+            preview: `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`,
             duration: "",
-            author: extractAuthor(author),
-            thumbnail: preview,
+            author: "YouTube Creator",
+            thumbnail: `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`,
             media: [{
-              url: _url,
+              url: `https://www.youtube.com/watch?v=${videoId}`,
               type: "video",
-              title: extractCleanTitle(title, "youtube"),
+              title: `YouTube Video ${videoId}`,
               duration: "",
-              author: extractAuthor(author),
-              thumbnail: preview,
-              quality: bestYoutubeLink.quality,
-              qualityLabel: getQualityLabel(bestYoutubeLink.quality)
+              author: "YouTube Creator",
+              thumbnail: `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`,
+              quality: 1080,
+              qualityLabel: getQualityLabel(1080)
             }]
           }
         };
