@@ -969,6 +969,12 @@ async function downloadDirectVideo(format, videoInfo, onProgress) {
   }
 }
 
+const youtubeDownloader = {
+  __proto__: null,
+  downloadYouTubeVideo: downloadYouTubeVideo,
+  getYouTubeVideoInfo: getYouTubeVideoInfo
+};
+
 let cheerioLoad = null;
 const responseCache = /* @__PURE__ */ new Map();
 const CACHE_DURATION = 1 * 60 * 1e3;
@@ -1191,227 +1197,97 @@ const snapsave = async (url) => {
     }
     if (isYoutube) {
       try {
-        const videoId = extractYouTubeVideoId(url);
-        if (!videoId) {
-          return { success: false, message: "Invalid YouTube URL" };
-        }
-        try {
-          const y2mateUrl = `https://www.y2mate.com/youtube/${videoId}`;
-          const y2mateResponse = await fetch(y2mateUrl, {
-            headers: {
-              "user-agent": userAgent,
-              "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-              "accept-language": "en-US,en;q=0.5",
-              "cache-control": "no-cache",
-              "pragma": "no-cache"
-            }
-          });
-          if (y2mateResponse.ok) {
-            const y2mateHtml = await y2mateResponse.text();
-            const downloadLinkRegex = /href="([^"]*y2mate\.com\/download[^"]*)"[^>]*>([^<]*Download[^<]*)</gi;
-            const y2mateLinks = [];
-            let match;
-            while ((match = downloadLinkRegex.exec(y2mateHtml)) !== null) {
-              const href = match[1];
-              const text = match[2];
-              let quality = 0;
-              if (text.includes("4K") || text.includes("2160")) quality = 4e3;
-              else if (text.includes("2K") || text.includes("1440")) quality = 2e3;
-              else if (text.includes("1080") || text.includes("HD")) quality = 1080;
-              else if (text.includes("720")) quality = 720;
-              else if (text.includes("480")) quality = 480;
-              else if (text.includes("360")) quality = 360;
-              else quality = 500;
-              y2mateLinks.push({
-                url: href,
-                quality,
-                text: text.trim(),
-                type: "video"
+        const { getYouTubeVideoInfo: getYouTubeVideoInfo2 } = await Promise.resolve().then(function () { return youtubeDownloader; });
+        const videoInfo = await getYouTubeVideoInfo2(url);
+        if (videoInfo.success && videoInfo.data) {
+          const { videoInfo: info, downloadLinks, bestQuality, thumbnail } = videoInfo.data;
+          const media2 = [];
+          if (downloadLinks.length > 0) {
+            downloadLinks.forEach((format, index) => {
+              media2.push({
+                url: format.url,
+                type: format.type,
+                title: `${info.title} - ${format.quality} Quality`,
+                duration: info.duration,
+                author: info.author,
+                thumbnail,
+                quality: parseInt(format.quality.replace("p", "").replace("K", "000")),
+                qualityLabel: format.quality,
+                resolution: format.resolution,
+                mimeType: format.mimeType
               });
-            }
-            if (y2mateLinks.length > 0) {
-              y2mateLinks.sort((a, b) => b.quality - a.quality);
-              const bestLink = y2mateLinks[0];
-              const result2 = {
-                success: true,
-                data: {
-                  title: `YouTube Video ${videoId}`,
-                  description: "YouTube video download via y2mate.com",
-                  preview: `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`,
-                  duration: "",
-                  author: "YouTube Creator",
-                  thumbnail: `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`,
-                  media: [{
-                    url: bestLink.url,
-                    type: "video",
-                    title: `YouTube Video ${videoId}`,
-                    duration: "",
-                    author: "YouTube Creator",
-                    thumbnail: `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`,
-                    quality: bestLink.quality,
-                    qualityLabel: getQualityLabel$1(bestLink.quality)
-                  }]
-                }
-              };
-              responseCache.set(cacheKey, { data: result2.data, timestamp: Date.now() });
-              return result2;
-            }
+            });
           }
-        } catch (y2mateError) {
-          console.log("\u26A0\uFE0F y2mate.com failed:", y2mateError.message);
-        }
-        try {
-          const ytDownloadUrl = `https://yt-download.org/download/${videoId}`;
-          const ytDownloadResponse = await fetch(ytDownloadUrl, {
-            headers: {
-              "user-agent": userAgent,
-              "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-              "accept-language": "en-US,en;q=0.5"
+          media2.push(
+            {
+              url: `https://img.youtube.com/vi/${info.videoId}/maxresdefault.jpg`,
+              type: "image",
+              title: `${info.title} - High Quality Thumbnail`,
+              duration: info.duration,
+              author: info.author,
+              thumbnail,
+              quality: 1080,
+              qualityLabel: "Thumbnail (1080p)",
+              resolution: "1920x1080",
+              mimeType: "image/jpeg"
+            },
+            {
+              url: `https://img.youtube.com/vi/${info.videoId}/hqdefault.jpg`,
+              type: "image",
+              title: `${info.title} - Medium Quality Thumbnail`,
+              duration: info.duration,
+              author: info.author,
+              thumbnail,
+              quality: 720,
+              qualityLabel: "Thumbnail (720p)",
+              resolution: "1280x720",
+              mimeType: "image/jpeg"
+            },
+            {
+              url: `https://img.youtube.com/vi/${info.videoId}/sddefault.jpg`,
+              type: "image",
+              title: `${info.title} - Standard Quality Thumbnail`,
+              duration: info.duration,
+              author: info.author,
+              thumbnail,
+              quality: 480,
+              qualityLabel: "Thumbnail (480p)",
+              resolution: "854x480",
+              mimeType: "image/jpeg"
             }
-          });
-          if (ytDownloadResponse.ok) {
-            const ytDownloadHtml = await ytDownloadResponse.text();
-            const downloadLinkRegex = /href="([^"]*download[^"]*)"[^>]*>([^<]*Download[^<]*)</gi;
-            const ytDownloadLinks = [];
-            let match;
-            while ((match = downloadLinkRegex.exec(ytDownloadHtml)) !== null) {
-              const href = match[1];
-              const text = match[2];
-              let quality = 0;
-              if (text.includes("4K") || text.includes("2160")) quality = 4e3;
-              else if (text.includes("2K") || text.includes("1440")) quality = 2e3;
-              else if (text.includes("1080") || text.includes("HD")) quality = 1080;
-              else if (text.includes("720")) quality = 720;
-              else if (text.includes("480")) quality = 480;
-              else if (text.includes("360")) quality = 360;
-              else quality = 500;
-              ytDownloadLinks.push({
-                url: href,
-                quality,
-                text: text.trim(),
-                type: "video"
-              });
-            }
-            if (ytDownloadLinks.length > 0) {
-              ytDownloadLinks.sort((a, b) => b.quality - a.quality);
-              const bestLink = ytDownloadLinks[0];
-              const result2 = {
-                success: true,
-                data: {
-                  title: `YouTube Video ${videoId}`,
-                  description: "YouTube video download via yt-download.org",
-                  preview: `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`,
-                  duration: "",
-                  author: "YouTube Creator",
-                  thumbnail: `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`,
-                  media: [{
-                    url: bestLink.url,
-                    type: "video",
-                    title: `YouTube Video ${videoId}`,
-                    duration: "",
-                    author: "YouTube Creator",
-                    thumbnail: `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`,
-                    quality: bestLink.quality,
-                    qualityLabel: getQualityLabel$1(bestLink.quality)
-                  }]
-                }
-              };
-              responseCache.set(cacheKey, { data: result2.data, timestamp: Date.now() });
-              return result2;
-            }
-          }
-        } catch (ytDownloadError) {
-          console.log("\u26A0\uFE0F yt-download.org failed:", ytDownloadError.message);
-        }
-        try {
+          );
           const result2 = {
             success: true,
             data: {
-              title: `YouTube Video ${videoId}`,
-              description: "YouTube video download - working video download links available with multiple quality choices",
-              preview: `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`,
-              duration: "",
-              author: "YouTube Creator",
-              thumbnail: `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`,
-              media: [
-                // Option 1: Working video download service (snapany.com)
-                {
-                  url: `https://snapany.com/youtube`,
-                  type: "service",
-                  title: `YouTube Video ${videoId} - Visit snapany.com for Video Download`,
-                  duration: "",
-                  author: "YouTube Creator",
-                  thumbnail: `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`,
-                  quality: 1080,
-                  qualityLabel: "Video Download Service"
-                },
-                // Option 2: Alternative working video download service
-                {
-                  url: `https://y2mate.com/youtube/${videoId}`,
-                  type: "service",
-                  title: `YouTube Video ${videoId} - Visit y2mate.com for Video Download`,
-                  duration: "",
-                  author: "YouTube Creator",
-                  thumbnail: `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`,
-                  quality: 1080,
-                  qualityLabel: "Alternative Video Service"
-                },
-                // Option 3: High-quality thumbnail (always works)
-                {
-                  url: `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`,
-                  type: "image",
-                  title: `YouTube Video ${videoId} - High Quality Thumbnail`,
-                  duration: "",
-                  author: "YouTube Creator",
-                  thumbnail: `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`,
-                  quality: 1080,
-                  qualityLabel: "Thumbnail (1080p)"
-                },
-                // Option 4: Medium quality thumbnail
-                {
-                  url: `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`,
-                  type: "image",
-                  title: `YouTube Video ${videoId} - Medium Quality Thumbnail`,
-                  duration: "",
-                  author: "YouTube Creator",
-                  thumbnail: `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`,
-                  quality: 720,
-                  qualityLabel: "Thumbnail (720p)"
-                },
-                // Option 5: Standard quality thumbnail
-                {
-                  url: `https://img.youtube.com/vi/${videoId}/sddefault.jpg`,
-                  type: "image",
-                  title: `YouTube Video ${videoId} - Standard Quality Thumbnail`,
-                  duration: "",
-                  author: "YouTube Creator",
-                  thumbnail: `https://img.youtube.com/vi/${videoId}/sddefault.jpg`,
-                  quality: 480,
-                  qualityLabel: "Thumbnail (480p)"
-                }
-              ]
+              title: info.title,
+              description: `YouTube video download - ${downloadLinks.length > 0 ? downloadLinks.length + " video formats" : "thumbnails"} available with multiple quality choices`,
+              preview: thumbnail,
+              duration: info.duration,
+              author: info.author,
+              thumbnail,
+              media: media2
             }
           };
           responseCache.set(cacheKey, { data: result2.data, timestamp: Date.now() });
           return result2;
-        } catch (error) {
+        } else {
           const result2 = {
             success: true,
             data: {
-              title: `YouTube Video ${videoId}`,
+              title: `YouTube Video ${extractYouTubeVideoId(url)}`,
               description: "YouTube video download - basic thumbnail available. For video download, please visit the YouTube page and use browser extensions.",
-              preview: `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`,
+              preview: `https://img.youtube.com/vi/${extractYouTubeVideoId(url)}/maxresdefault.jpg`,
               duration: "",
               author: "YouTube Creator",
-              thumbnail: `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`,
+              thumbnail: `https://img.youtube.com/vi/${extractYouTubeVideoId(url)}/maxresdefault.jpg`,
               media: [
                 {
-                  url: `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`,
+                  url: `https://img.youtube.com/vi/${extractYouTubeVideoId(url)}/maxresdefault.jpg`,
                   type: "image",
-                  title: `YouTube Video ${videoId} - Thumbnail`,
+                  title: `YouTube Video ${extractYouTubeVideoId(url)} - Thumbnail`,
                   duration: "",
                   author: "YouTube Creator",
-                  thumbnail: `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`,
+                  thumbnail: `https://img.youtube.com/vi/${extractYouTubeVideoId(url)}/maxresdefault.jpg`,
                   quality: 1080,
                   qualityLabel: "Thumbnail"
                 }
