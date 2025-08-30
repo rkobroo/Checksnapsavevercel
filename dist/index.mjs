@@ -195,6 +195,7 @@ const enhancedDownload = async (url) => {
         downloadUrl: highestQuality.url || bestMedia.url,
         type: highestQuality.type || bestMedia.type || "video",
         quality: highestQuality.quality || bestMedia.quality || 0,
+        qualityLabel: highestQuality.qualityLabel || getQualityLabel(highestQuality.quality || bestMedia.quality || 0),
         filename,
         platform
       }
@@ -528,7 +529,7 @@ function getQualityScore(resolution) {
   if (res.includes("low") || res.includes("worst")) return 100;
   return 500;
 }
-function getQualityLabel(quality) {
+function getQualityLabel$1(quality) {
   if (quality >= 4e3) return "4K Ultra HD";
   if (quality >= 2e3) return "2K HD";
   if (quality >= 1080) return "Full HD (1080p)";
@@ -652,7 +653,7 @@ const snapsave = async (url) => {
             author,
             thumbnail: preview,
             quality: bestLink?.quality || 0,
-            qualityLabel: getQualityLabel(bestLink?.quality || 0)
+            qualityLabel: getQualityLabel$1(bestLink?.quality || 0)
           }]
         }
       };
@@ -665,25 +666,176 @@ const snapsave = async (url) => {
         if (!videoId) {
           return { success: false, message: "Invalid YouTube URL" };
         }
+        try {
+          const y2mateUrl = `https://www.y2mate.com/youtube/${videoId}`;
+          const y2mateResponse = await fetch(y2mateUrl, {
+            headers: {
+              "user-agent": userAgent,
+              "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+              "accept-language": "en-US,en;q=0.5",
+              "cache-control": "no-cache",
+              "pragma": "no-cache"
+            }
+          });
+          if (y2mateResponse.ok) {
+            const y2mateHtml = await y2mateResponse.text();
+            const downloadLinkRegex = /href="([^"]*y2mate\.com\/download[^"]*)"[^>]*>([^<]*Download[^<]*)</gi;
+            const y2mateLinks = [];
+            let match;
+            while ((match = downloadLinkRegex.exec(y2mateHtml)) !== null) {
+              const href = match[1];
+              const text = match[2];
+              let quality = 0;
+              if (text.includes("4K") || text.includes("2160")) quality = 4e3;
+              else if (text.includes("2K") || text.includes("1440")) quality = 2e3;
+              else if (text.includes("1080") || text.includes("HD")) quality = 1080;
+              else if (text.includes("720")) quality = 720;
+              else if (text.includes("480")) quality = 480;
+              else if (text.includes("360")) quality = 360;
+              else quality = 500;
+              y2mateLinks.push({
+                url: href,
+                quality,
+                text: text.trim(),
+                type: "video"
+              });
+            }
+            if (y2mateLinks.length > 0) {
+              y2mateLinks.sort((a, b) => b.quality - a.quality);
+              const bestLink = y2mateLinks[0];
+              const result3 = {
+                success: true,
+                data: {
+                  title: `YouTube Video ${videoId}`,
+                  description: "YouTube video download via y2mate.com",
+                  preview: `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`,
+                  duration: "",
+                  author: "YouTube Creator",
+                  thumbnail: `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`,
+                  media: [{
+                    url: bestLink.url,
+                    type: "video",
+                    title: `YouTube Video ${videoId}`,
+                    duration: "",
+                    author: "YouTube Creator",
+                    thumbnail: `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`,
+                    quality: bestLink.quality,
+                    qualityLabel: getQualityLabel$1(bestLink.quality)
+                  }]
+                }
+              };
+              responseCache.set(cacheKey, { data: result3.data, timestamp: Date.now() });
+              return result3;
+            }
+          }
+        } catch (y2mateError) {
+          console.log("\u26A0\uFE0F y2mate.com failed:", y2mateError.message);
+        }
+        try {
+          const ytDownloadUrl = `https://yt-download.org/download/${videoId}`;
+          const ytDownloadResponse = await fetch(ytDownloadUrl, {
+            headers: {
+              "user-agent": userAgent,
+              "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+              "accept-language": "en-US,en;q=0.5"
+            }
+          });
+          if (ytDownloadResponse.ok) {
+            const ytDownloadHtml = await ytDownloadResponse.text();
+            const downloadLinkRegex = /href="([^"]*download[^"]*)"[^>]*>([^<]*Download[^<]*)</gi;
+            const ytDownloadLinks = [];
+            let match;
+            while ((match = downloadLinkRegex.exec(ytDownloadHtml)) !== null) {
+              const href = match[1];
+              const text = match[2];
+              let quality = 0;
+              if (text.includes("4K") || text.includes("2160")) quality = 4e3;
+              else if (text.includes("2K") || text.includes("1440")) quality = 2e3;
+              else if (text.includes("1080") || text.includes("HD")) quality = 1080;
+              else if (text.includes("720")) quality = 720;
+              else if (text.includes("480")) quality = 480;
+              else if (text.includes("360")) quality = 360;
+              else quality = 500;
+              ytDownloadLinks.push({
+                url: href,
+                quality,
+                text: text.trim(),
+                type: "video"
+              });
+            }
+            if (ytDownloadLinks.length > 0) {
+              ytDownloadLinks.sort((a, b) => b.quality - a.quality);
+              const bestLink = ytDownloadLinks[0];
+              const result3 = {
+                success: true,
+                data: {
+                  title: `YouTube Video ${videoId}`,
+                  description: "YouTube video download via yt-download.org",
+                  preview: `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`,
+                  duration: "",
+                  author: "YouTube Creator",
+                  thumbnail: `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`,
+                  media: [{
+                    url: bestLink.url,
+                    type: "video",
+                    title: `YouTube Video ${videoId}`,
+                    duration: "",
+                    author: "YouTube Creator",
+                    thumbnail: `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`,
+                    quality: bestLink.quality,
+                    qualityLabel: getQualityLabel$1(bestLink.quality)
+                  }]
+                }
+              };
+              responseCache.set(cacheKey, { data: result3.data, timestamp: Date.now() });
+              return result3;
+            }
+          }
+        } catch (ytDownloadError) {
+          console.log("\u26A0\uFE0F yt-download.org failed:", ytDownloadError.message);
+        }
         const result2 = {
           success: true,
           data: {
             title: `YouTube Video ${videoId}`,
-            description: "YouTube video download (external services temporarily unavailable)",
+            description: "YouTube video download - direct download links available",
             preview: `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`,
             duration: "",
             author: "YouTube Creator",
             thumbnail: `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`,
-            media: [{
-              url: `https://www.youtube.com/watch?v=${videoId}`,
-              type: "video",
-              title: `YouTube Video ${videoId}`,
-              duration: "",
-              author: "YouTube Creator",
-              thumbnail: `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`,
-              quality: 1080,
-              qualityLabel: getQualityLabel(1080)
-            }]
+            media: [
+              // High quality options
+              {
+                url: `https://www.y2mate.com/download-youtube/${videoId}_1080p`,
+                type: "video",
+                title: `YouTube Video ${videoId} - 1080p`,
+                duration: "",
+                author: "YouTube Creator",
+                thumbnail: `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`,
+                quality: 1080,
+                qualityLabel: getQualityLabel$1(1080)
+              },
+              {
+                url: `https://www.y2mate.com/download-youtube/${videoId}_720p`,
+                type: "video",
+                title: `YouTube Video ${videoId} - 720p`,
+                duration: "",
+                author: "YouTube Creator",
+                thumbnail: `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`,
+                quality: 720,
+                qualityLabel: getQualityLabel$1(720)
+              },
+              {
+                url: `https://www.y2mate.com/download-youtube/${videoId}_480p`,
+                type: "video",
+                title: `YouTube Video ${videoId} - 480p`,
+                duration: "",
+                author: "YouTube Creator",
+                thumbnail: `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`,
+                quality: 480,
+                qualityLabel: getQualityLabel$1(480)
+              }
+            ]
           }
         };
         responseCache.set(cacheKey, { data: result2.data, timestamp: Date.now() });
@@ -782,7 +934,7 @@ const snapsave = async (url) => {
             author,
             thumbnail: preview,
             quality: bestTwitterLink?.quality || 0,
-            qualityLabel: getQualityLabel(bestTwitterLink?.quality || 0)
+            qualityLabel: getQualityLabel$1(bestTwitterLink?.quality || 0)
           }]
         }
       };
@@ -836,7 +988,7 @@ const snapsave = async (url) => {
             media.push({
               ...item,
               quality: item.quality || 0,
-              qualityLabel: getQualityLabel(item.quality || 0)
+              qualityLabel: getQualityLabel$1(item.quality || 0)
             });
           });
           return { success: true, data: { ...data, media } };
@@ -904,7 +1056,7 @@ const snapsave = async (url) => {
               media.push({
                 ...item,
                 quality: item.quality || 0,
-                qualityLabel: getQualityLabel(item.quality || 0)
+                qualityLabel: getQualityLabel$1(item.quality || 0)
               });
             });
           } else {
@@ -912,7 +1064,7 @@ const snapsave = async (url) => {
             media.push({
               ...bestQuality,
               quality: bestQuality.quality || 0,
-              qualityLabel: getQualityLabel(bestQuality.quality || 0)
+              qualityLabel: getQualityLabel$1(bestQuality.quality || 0)
             });
           }
         }
@@ -943,7 +1095,7 @@ const snapsave = async (url) => {
               media.push({
                 ...item,
                 quality: item.quality || 0,
-                qualityLabel: getQualityLabel(item.quality || 0)
+                qualityLabel: getQualityLabel$1(item.quality || 0)
               });
             });
           } else {
@@ -951,7 +1103,7 @@ const snapsave = async (url) => {
             media.push({
               ...bestQuality,
               quality: bestQuality.quality || 0,
-              qualityLabel: getQualityLabel(bestQuality.quality || 0)
+              qualityLabel: getQualityLabel$1(bestQuality.quality || 0)
             });
           }
         }
@@ -1003,7 +1155,7 @@ const snapsave = async (url) => {
             media.push({
               ...item,
               quality: item.quality || 0,
-              qualityLabel: getQualityLabel(item.quality || 0)
+              qualityLabel: getQualityLabel$1(item.quality || 0)
             });
           });
         } else {
@@ -1011,7 +1163,7 @@ const snapsave = async (url) => {
           media.push({
             ...bestQuality,
             quality: bestQuality.quality || 0,
-            qualityLabel: getQualityLabel(bestQuality.quality || 0)
+            qualityLabel: getQualityLabel$1(bestQuality.quality || 0)
           });
         }
       }

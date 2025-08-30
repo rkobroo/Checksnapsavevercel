@@ -75,6 +75,7 @@ export const enhancedDownload = async (url: string): Promise<EnhancedDownloadRes
         downloadUrl: highestQuality.url || bestMedia.url,
         type: highestQuality.type || bestMedia.type || "video",
         quality: highestQuality.quality || bestMedia.quality || 0,
+        qualityLabel: highestQuality.qualityLabel || getQualityLabel(highestQuality.quality || bestMedia.quality || 0),
         filename,
         platform
       }
