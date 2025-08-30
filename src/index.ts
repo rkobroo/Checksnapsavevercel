@@ -436,6 +436,54 @@ export const snapsave = async (url: string): Promise<SnapSaveDownloaderResponse>
     const media: SnapSaveDownloaderMedia[] = [];
 
     if ($("table.table").length || $("article.media > figure").length) {
+      // Special handling for Instagram carousels
+      if (url.includes('instagram') && $("div.card").length > 1) {
+        // Instagram carousel detected - look for multiple cards
+        const carouselItems: any[] = [];
+        
+        $("div.card").each((_, el) => {
+          const cardBody = $(el).find("div.card-body");
+          const aText = cardBody.find("a").text().trim();
+          let cardUrl = cardBody.find("a").attr("href");
+          
+          // Handle different URL formats
+          if (cardUrl && cardUrl.includes("get_progressApi")) {
+            const match = /get_progressApi\('(.*?)'\)/.exec(cardUrl);
+            if (match && match[1]) {
+              cardUrl = "https://snapsave.app" + match[1];
+            }
+          }
+          
+          if (cardUrl && cardUrl.startsWith("http")) {
+            carouselItems.push({
+              url: cardUrl,
+              type: aText.includes("Photo") ? "image" : "video",
+              title: data.title || "Instagram Photo",
+              duration: data.duration || "",
+              author: data.author || "",
+              thumbnail: data.thumbnail || "",
+              quality: aText.includes("HD") || aText.includes("1080") ? 1000 : 
+                      aText.includes("720") ? 720 : 
+                      aText.includes("480") ? 480 : 500
+            });
+          }
+        });
+        
+        // Add all carousel items
+        if (carouselItems.length > 0) {
+          carouselItems.forEach(item => {
+            media.push({
+              ...item,
+              quality: item.quality || 0,
+              qualityLabel: getQualityLabel(item.quality || 0)
+            });
+          });
+          
+          // If we found Instagram carousel items, skip the regular processing
+          // to avoid duplicates
+          return { success: true, data: { ...data, media } };
+        }
+      }
       // Enhanced Facebook/Instagram metadata extraction
       let description = $("span.video-des").text().trim() ||
                        $(".video-title").text().trim() ||
@@ -499,7 +547,18 @@ export const snapsave = async (url: string): Promise<SnapSaveDownloaderResponse>
           resolution,
           ...shouldRender ? { shouldRender } : {},
           url: _url,
-          type: resolution ? "video" : "image",
+          // Better type detection for Instagram carousels
+          type: (() => {
+            if (url.includes('instagram')) {
+              // For Instagram, check if it's likely a photo based on context
+              const rowText = $el.text().toLowerCase();
+              if (rowText.includes('photo') || rowText.includes('image') || !resolution) {
+                return "image";
+              }
+            }
+            // For Facebook, use the old logic
+            return resolution ? "video" : "image";
+          })(),
           title: data.title,
           duration: data.duration,
           author: data.author,
@@ -513,16 +572,27 @@ export const snapsave = async (url: string): Promise<SnapSaveDownloaderResponse>
           return (b.quality || 0) - (a.quality || 0);
         });
         
-        // Only add the highest quality media to prevent duplicates
+        // For Instagram carousels, add ALL media items
+        // For Facebook, add only the highest quality to prevent duplicates
         if (mediaItems.length > 0) {
-          const bestQuality = mediaItems[0];
-          media.push({
-            ...bestQuality,
-            // Ensure we have the best quality indicator
-            quality: bestQuality.quality || 0,
-            // Add quality label for user information
-            qualityLabel: getQualityLabel(bestQuality.quality || 0)
-          });
+          if (url.includes('instagram')) {
+            // Instagram: Add all media items for carousel support
+            mediaItems.forEach(item => {
+              media.push({
+                ...item,
+                quality: item.quality || 0,
+                qualityLabel: getQualityLabel(item.quality || 0)
+              });
+            });
+          } else {
+            // Facebook: Add only the highest quality media
+            const bestQuality = mediaItems[0];
+            media.push({
+              ...bestQuality,
+              quality: bestQuality.quality || 0,
+              qualityLabel: getQualityLabel(bestQuality.quality || 0)
+            });
+          }
         }
       }
       else if ($("div.card").length) {
@@ -553,14 +623,27 @@ export const snapsave = async (url: string): Promise<SnapSaveDownloaderResponse>
         // Sort by quality (highest first)
         cardItems.sort((a, b) => b.quality - a.quality);
         
-        // Only add the highest quality media
+        // For Instagram carousels, add ALL media items
+        // For Facebook, add only the highest quality to prevent duplicates
         if (cardItems.length > 0) {
-          const bestQuality = cardItems[0];
-          media.push({
-            ...bestQuality,
-            quality: bestQuality.quality || 0,
-            qualityLabel: getQualityLabel(bestQuality.quality || 0)
-          });
+          if (url.includes('instagram')) {
+            // Instagram: Add all media items for carousel support
+            cardItems.forEach(item => {
+              media.push({
+                ...item,
+                quality: item.quality || 0,
+                qualityLabel: getQualityLabel(item.quality || 0)
+              });
+            });
+          } else {
+            // Facebook: Add only the highest quality media
+            const bestQuality = cardItems[0];
+            media.push({
+              ...bestQuality,
+              quality: bestQuality.quality || 0,
+              qualityLabel: getQualityLabel(bestQuality.quality || 0)
+            });
+          }
         }
       }
       else {
@@ -617,14 +700,27 @@ export const snapsave = async (url: string): Promise<SnapSaveDownloaderResponse>
       // Sort by quality (highest first)  
       downloadItems.sort((a, b) => b.quality - a.quality);
       
-      // Only add the highest quality media
+      // For Instagram carousels, add ALL media items
+      // For Facebook, add only the highest quality to prevent duplicates
       if (downloadItems.length > 0) {
-        const bestQuality = downloadItems[0];
-        media.push({
-          ...bestQuality,
-          quality: bestQuality.quality || 0,
-          qualityLabel: getQualityLabel(bestQuality.quality || 0)
-        });
+        if (url.includes('instagram')) {
+          // Instagram: Add all media items for carousel support
+          downloadItems.forEach(item => {
+            media.push({
+              ...item,
+              quality: item.quality || 0,
+              qualityLabel: getQualityLabel(item.quality || 0)
+            });
+          });
+        } else {
+          // Facebook: Add only the highest quality media
+          const bestQuality = downloadItems[0];
+          media.push({
+            ...bestQuality,
+            quality: bestQuality.quality || 0,
+            qualityLabel: getQualityLabel(bestQuality.quality || 0)
+          });
+        }
       }
     }
     if (!media.length) return { success: false, message: "Blank data" };
