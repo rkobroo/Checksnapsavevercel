@@ -149,23 +149,34 @@ export const downloadAllPhotos = async (url: string): Promise<{
     const { data } = result;
     const allMedia = data.media || [];
     
-    // Filter only photos/images
-    const photos = allMedia
-      .filter(item => item.type === 'image' || item.type === 'photo')
+    // Enhanced filtering for Instagram carousels
+    // For Instagram, we want to include ALL media items as they're likely photos
+    // For other platforms, filter by type
+    const isInstagram = url.includes('instagram');
+    
+    let photos = allMedia;
+    if (!isInstagram) {
+      // For non-Instagram platforms, filter by type
+      photos = allMedia.filter(item => item.type === 'image' || item.type === 'photo');
+    }
+    
+    // Map to photo objects with enhanced information
+    const photoObjects = photos
       .map((item, index) => ({
         url: item.url || '',
         filename: generateCleanFilename(
-          `${data.title || 'photo'}_${index + 1}`,
+          `${data.title || (isInstagram ? 'instagram_photo' : 'photo')}_${index + 1}`,
           'image',
           'jpg'
         ),
         index: index + 1,
         quality: item.quality || 500,
-        thumbnail: item.thumbnail || data.thumbnail || data.preview || ''
+        thumbnail: item.thumbnail || data.thumbnail || data.preview || '',
+        originalType: item.type || 'unknown'
       }))
       .filter(photo => photo.url && photo.url.startsWith('http'));
     
-    if (photos.length === 0) {
+    if (photoObjects.length === 0) {
       return { 
         success: false, 
         message: "No photos found. This might be a video-only post." 
@@ -174,7 +185,7 @@ export const downloadAllPhotos = async (url: string): Promise<{
     
     // Generate zip filename for bulk download
     const zipFilename = generateCleanFilename(
-      `${data.title || 'photos'}_${photos.length}_photos`,
+      `${data.title || 'photos'}_${photoObjects.length}_photos`,
       'zip'
     );
     
@@ -184,8 +195,8 @@ export const downloadAllPhotos = async (url: string): Promise<{
         title: data.title || 'Photo Collection',
         description: data.description || '',
         author: data.author || '',
-        totalPhotos: photos.length,
-        photos,
+        totalPhotos: photoObjects.length,
+        photos: photoObjects,
         zipFilename
       }
     };

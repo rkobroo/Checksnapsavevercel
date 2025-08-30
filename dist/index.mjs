@@ -163,25 +163,31 @@ const downloadAllPhotos = async (url) => {
     }
     const { data } = result;
     const allMedia = data.media || [];
-    const photos = allMedia.filter((item) => item.type === "image" || item.type === "photo").map((item, index) => ({
+    const isInstagram = url.includes("instagram");
+    let photos = allMedia;
+    if (!isInstagram) {
+      photos = allMedia.filter((item) => item.type === "image" || item.type === "photo");
+    }
+    const photoObjects = photos.map((item, index) => ({
       url: item.url || "",
       filename: generateCleanFilename(
-        `${data.title || "photo"}_${index + 1}`,
+        `${data.title || (isInstagram ? "instagram_photo" : "photo")}_${index + 1}`,
         "image",
         "jpg"
       ),
       index: index + 1,
       quality: item.quality || 500,
-      thumbnail: item.thumbnail || data.thumbnail || data.preview || ""
+      thumbnail: item.thumbnail || data.thumbnail || data.preview || "",
+      originalType: item.type || "unknown"
     })).filter((photo) => photo.url && photo.url.startsWith("http"));
-    if (photos.length === 0) {
+    if (photoObjects.length === 0) {
       return {
         success: false,
         message: "No photos found. This might be a video-only post."
       };
     }
     const zipFilename = generateCleanFilename(
-      `${data.title || "photos"}_${photos.length}_photos`,
+      `${data.title || "photos"}_${photoObjects.length}_photos`,
       "zip"
     );
     return {
@@ -190,8 +196,8 @@ const downloadAllPhotos = async (url) => {
         title: data.title || "Photo Collection",
         description: data.description || "",
         author: data.author || "",
-        totalPhotos: photos.length,
-        photos,
+        totalPhotos: photoObjects.length,
+        photos: photoObjects,
         zipFilename
       }
     };
@@ -625,6 +631,41 @@ const snapsave = async (url) => {
     const data = {};
     const media = [];
     if ($("table.table").length || $("article.media > figure").length) {
+      if (url.includes("instagram") && $("div.card").length > 1) {
+        const carouselItems = [];
+        $("div.card").each((_, el) => {
+          const cardBody = $(el).find("div.card-body");
+          const aText = cardBody.find("a").text().trim();
+          let cardUrl = cardBody.find("a").attr("href");
+          if (cardUrl && cardUrl.includes("get_progressApi")) {
+            const match = /get_progressApi\('(.*?)'\)/.exec(cardUrl);
+            if (match && match[1]) {
+              cardUrl = "https://snapsave.app" + match[1];
+            }
+          }
+          if (cardUrl && cardUrl.startsWith("http")) {
+            carouselItems.push({
+              url: cardUrl,
+              type: aText.includes("Photo") ? "image" : "video",
+              title: data.title || "Instagram Photo",
+              duration: data.duration || "",
+              author: data.author || "",
+              thumbnail: data.thumbnail || "",
+              quality: aText.includes("HD") || aText.includes("1080") ? 1e3 : aText.includes("720") ? 720 : aText.includes("480") ? 480 : 500
+            });
+          }
+        });
+        if (carouselItems.length > 0) {
+          carouselItems.forEach((item) => {
+            media.push({
+              ...item,
+              quality: item.quality || 0,
+              qualityLabel: getQualityLabel(item.quality || 0)
+            });
+          });
+          return { success: true, data: { ...data, media } };
+        }
+      }
       let description = $("span.video-des").text().trim() || $(".video-title").text().trim() || $("h1").first().text().trim() || $("h2").first().text().trim() || $("h3").first().text().trim() || $(".title").text().trim() || $(".desc").text().trim() || $(".video-description").text().trim() || $("p").first().text().trim() || $("meta[property='og:title']").attr("content") || $("title").text().trim();
       const platform = url.includes("instagram") ? "instagram" : "facebook";
       const title = extractCleanTitle(description, platform);
@@ -661,7 +702,16 @@ const snapsave = async (url) => {
             resolution,
             ...shouldRender ? { shouldRender } : {},
             url: _url,
-            type: resolution ? "video" : "image",
+            // Better type detection for Instagram carousels
+            type: (() => {
+              if (url.includes("instagram")) {
+                const rowText = $el.text().toLowerCase();
+                if (rowText.includes("photo") || rowText.includes("image") || !resolution) {
+                  return "image";
+                }
+              }
+              return resolution ? "video" : "image";
+            })(),
             title: data.title,
             duration: data.duration,
             author: data.author,
@@ -673,14 +723,22 @@ const snapsave = async (url) => {
           return (b.quality || 0) - (a.quality || 0);
         });
         if (mediaItems.length > 0) {
-          const bestQuality = mediaItems[0];
-          media.push({
-            ...bestQuality,
-            // Ensure we have the best quality indicator
-            quality: bestQuality.quality || 0,
-            // Add quality label for user information
-            qualityLabel: getQualityLabel(bestQuality.quality || 0)
-          });
+          if (url.includes("instagram")) {
+            mediaItems.forEach((item) => {
+              media.push({
+                ...item,
+                quality: item.quality || 0,
+                qualityLabel: getQualityLabel(item.quality || 0)
+              });
+            });
+          } else {
+            const bestQuality = mediaItems[0];
+            media.push({
+              ...bestQuality,
+              quality: bestQuality.quality || 0,
+              qualityLabel: getQualityLabel(bestQuality.quality || 0)
+            });
+          }
         }
       } else if ($("div.card").length) {
         const cardItems = [];
@@ -704,12 +762,22 @@ const snapsave = async (url) => {
         });
         cardItems.sort((a, b) => b.quality - a.quality);
         if (cardItems.length > 0) {
-          const bestQuality = cardItems[0];
-          media.push({
-            ...bestQuality,
-            quality: bestQuality.quality || 0,
-            qualityLabel: getQualityLabel(bestQuality.quality || 0)
-          });
+          if (url.includes("instagram")) {
+            cardItems.forEach((item) => {
+              media.push({
+                ...item,
+                quality: item.quality || 0,
+                qualityLabel: getQualityLabel(item.quality || 0)
+              });
+            });
+          } else {
+            const bestQuality = cardItems[0];
+            media.push({
+              ...bestQuality,
+              quality: bestQuality.quality || 0,
+              qualityLabel: getQualityLabel(bestQuality.quality || 0)
+            });
+          }
         }
       } else {
         let url2 = $("a[href*='download']").attr("href") || $("a").first().attr("href") || $("button").attr("onclick");
@@ -754,12 +822,22 @@ const snapsave = async (url) => {
       });
       downloadItems.sort((a, b) => b.quality - a.quality);
       if (downloadItems.length > 0) {
-        const bestQuality = downloadItems[0];
-        media.push({
-          ...bestQuality,
-          quality: bestQuality.quality || 0,
-          qualityLabel: getQualityLabel(bestQuality.quality || 0)
-        });
+        if (url.includes("instagram")) {
+          downloadItems.forEach((item) => {
+            media.push({
+              ...item,
+              quality: item.quality || 0,
+              qualityLabel: getQualityLabel(item.quality || 0)
+            });
+          });
+        } else {
+          const bestQuality = downloadItems[0];
+          media.push({
+            ...bestQuality,
+            quality: bestQuality.quality || 0,
+            qualityLabel: getQualityLabel(bestQuality.quality || 0)
+          });
+        }
       }
     }
     if (!media.length) return { success: false, message: "Blank data" };
