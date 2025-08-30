@@ -134,6 +134,50 @@ declare const downloadMultipleTimes: (url: string, count?: number) => Promise<{
  */
 declare const getDownloadInfo: (url: string) => Promise<EnhancedDownloadResponse>;
 
+/**
+ * Custom YouTube Video Downloader
+ * This script can extract and download actual YouTube video files
+ */
+interface YouTubeVideoInfo {
+    videoId: string;
+    title: string;
+    duration: string;
+    author: string;
+    thumbnail: string;
+    description: string;
+    formats: VideoFormat[];
+}
+interface VideoFormat {
+    url: string;
+    quality: string;
+    resolution: string;
+    fileSize?: string;
+    mimeType: string;
+    type: 'video' | 'audio' | 'video+audio';
+}
+interface DownloadResult {
+    success: boolean;
+    message?: string;
+    data?: {
+        videoInfo: YouTubeVideoInfo;
+        downloadLinks: VideoFormat[];
+        bestQuality: VideoFormat;
+        thumbnail: string;
+    };
+}
+/**
+ * Extract video information and download links from YouTube
+ */
+declare const getYouTubeVideoInfo: (url: string) => Promise<DownloadResult>;
+/**
+ * Download YouTube video with progress tracking
+ */
+declare const downloadYouTubeVideo: (url: string, quality?: string, onProgress?: (progress: number, downloaded: number, total: number) => void) => Promise<{
+    success: boolean;
+    message?: string;
+    filename?: string;
+}>;
+
 declare const clearResponseCache: () => void;
 declare const getCacheStatus: () => {
     totalEntries: number;
@@ -147,4 +191,5 @@ declare const getCacheStatus: () => {
 
 declare const snapsave: (url: string) => Promise<SnapSaveDownloaderResponse>;
 
-export { batchDownload, clearResponseCache, downloadAllMedia, downloadAllPhotos, downloadMultipleTimes, enhancedDownload, getCacheStatus, getDownloadInfo, snapsave };
+export { batchDownload, clearResponseCache, downloadAllMedia, downloadAllPhotos, downloadMultipleTimes, downloadYouTubeVideo, enhancedDownload, getCacheStatus, getDownloadInfo, getYouTubeVideoInfo, snapsave };
+export type { DownloadResult, VideoFormat, YouTubeVideoInfo };

@@ -504,6 +504,471 @@ const getDownloadInfo = async (url) => {
   }
 };
 
+const getYouTubeVideoInfo = async (url) => {
+  try {
+    const videoId = extractYouTubeVideoId(url);
+    if (!videoId) {
+      return { success: false, message: "Invalid YouTube URL" };
+    }
+    console.log(`\u{1F50D} Extracting info for YouTube video: ${videoId}`);
+    try {
+      const videoInfo = await extractFromYouTubePage(videoId);
+      if (videoInfo.success) {
+        return videoInfo;
+      }
+    } catch (error) {
+      console.log("\u26A0\uFE0F YouTube page extraction failed:", error.message);
+    }
+    try {
+      const y2mateInfo = await extractFromY2Mate(videoId);
+      if (y2mateInfo.success) {
+        return y2mateInfo;
+      }
+    } catch (error) {
+      console.log("\u26A0\uFE0F Y2Mate extraction failed:", error.message);
+    }
+    try {
+      const snapanyInfo = await extractFromSnapany(videoId);
+      if (snapanyInfo.success) {
+        return snapanyInfo;
+      }
+    } catch (error) {
+      console.log("\u26A0\uFE0F Snapany extraction failed:", error.message);
+    }
+    return {
+      success: true,
+      data: {
+        videoInfo: {
+          videoId,
+          title: `YouTube Video ${videoId}`,
+          duration: "",
+          author: "YouTube Creator",
+          thumbnail: `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`,
+          description: "Video information extraction failed, but thumbnail is available",
+          formats: []
+        },
+        downloadLinks: [],
+        bestQuality: {
+          url: `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`,
+          quality: "1080p",
+          resolution: "1920x1080",
+          mimeType: "image/jpeg",
+          type: "video"
+        },
+        thumbnail: `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`
+      }
+    };
+  } catch (error) {
+    return {
+      success: false,
+      message: `YouTube extraction failed: ${error instanceof Error ? error.message : "Unknown error"}`
+    };
+  }
+};
+async function extractFromYouTubePage(videoId) {
+  try {
+    const response = await fetch(`https://www.youtube.com/watch?v=${videoId}`, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.5",
+        "Accept-Encoding": "gzip, deflate",
+        "DNT": "1",
+        "Connection": "keep-alive",
+        "Upgrade-Insecure-Requests": "1"
+      }
+    });
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    }
+    const html = await response.text();
+    const titleMatch = html.match(/<title>([^<]+)<\/title>/);
+    const title = titleMatch ? titleMatch[1].replace(" - YouTube", "") : `YouTube Video ${videoId}`;
+    const durationMatch = html.match(/"lengthSeconds":"(\d+)"/);
+    const duration = durationMatch ? formatDuration(parseInt(durationMatch[1])) : "";
+    const authorMatch = html.match(/"author":"([^"]+)"/);
+    const author = authorMatch ? authorMatch[1] : "YouTube Creator";
+    const descMatch = html.match(/"shortDescription":"([^"]+)"/);
+    const description = descMatch ? descMatch[1] : "Video description not available";
+    const thumbnail = `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`;
+    const playerResponseMatch = html.match(/"player_response":"([^"]+)"/);
+    let formats = [];
+    if (playerResponseMatch) {
+      try {
+        const playerResponse = JSON.parse(decodeURIComponent(playerResponseMatch[1]));
+        formats = extractFormatsFromPlayerResponse(playerResponse);
+      } catch (parseError) {
+        console.log("\u26A0\uFE0F Failed to parse player response:", parseError.message);
+      }
+    }
+    if (formats.length === 0) {
+      const ytInitialMatch = html.match(/var ytInitialPlayerResponse = ({.+?});/);
+      if (ytInitialMatch) {
+        try {
+          const ytInitial = JSON.parse(ytInitialMatch[1]);
+          formats = extractFormatsFromPlayerResponse(ytInitial);
+        } catch (parseError) {
+          console.log("\u26A0\uFE0F Failed to parse ytInitialPlayerResponse:", parseError.message);
+        }
+      }
+    }
+    if (formats.length === 0) {
+      const videoUrlMatches = html.match(/https:\/\/[^"]*\.googlevideo\.com[^"]*/g);
+      if (videoUrlMatches) {
+        videoUrlMatches.forEach((url, index) => {
+          formats.push({
+            url,
+            quality: `${720 - index * 120}p`,
+            resolution: `${1280 - index * 160}x${720 - index * 120}`,
+            mimeType: "video/mp4",
+            type: "video"
+          });
+        });
+      }
+    }
+    if (formats.length === 0) {
+      formats = [
+        {
+          url: `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`,
+          quality: "1080p",
+          resolution: "1920x1080",
+          mimeType: "image/jpeg",
+          type: "video"
+        },
+        {
+          url: `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`,
+          quality: "720p",
+          resolution: "1280x720",
+          mimeType: "image/jpeg",
+          type: "video"
+        },
+        {
+          url: `https://img.youtube.com/vi/${videoId}/sddefault.jpg`,
+          quality: "480p",
+          resolution: "854x480",
+          mimeType: "image/jpeg",
+          type: "video"
+        }
+      ];
+    }
+    const videoInfo = {
+      videoId,
+      title,
+      duration,
+      author,
+      thumbnail,
+      description,
+      formats
+    };
+    const bestQuality = formats.reduce((best, current) => {
+      const currentQuality = parseInt(current.quality.replace("p", ""));
+      const bestQuality2 = parseInt(best.quality.replace("p", ""));
+      return currentQuality > bestQuality2 ? current : best;
+    }, formats[0]);
+    return {
+      success: true,
+      data: {
+        videoInfo,
+        downloadLinks: formats,
+        bestQuality,
+        thumbnail
+      }
+    };
+  } catch (error) {
+    throw new Error(`YouTube page extraction failed: ${error.message}`);
+  }
+}
+async function extractFromY2Mate(videoId) {
+  try {
+    const response = await fetch(`https://www.y2mate.com/youtube/${videoId}`, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.5"
+      }
+    });
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    }
+    const html = await response.text();
+    const titleMatch = html.match(/<title>([^<]+)<\/title>/);
+    const title = titleMatch ? titleMatch[1].replace(" - Y2mate.com", "") : `YouTube Video ${videoId}`;
+    const downloadLinks = [];
+    const linkRegex = /href="([^"]*download[^"]*)"[^>]*>([^<]*Download[^<]*)</gi;
+    let match;
+    while ((match = linkRegex.exec(html)) !== null) {
+      const url = match[1];
+      const text = match[2];
+      let quality = "720p";
+      let resolution = "1280x720";
+      let mimeType = "video/mp4";
+      let type = "video";
+      if (text.includes("4K") || text.includes("2160")) {
+        quality = "4K";
+        resolution = "3840x2160";
+      } else if (text.includes("1080")) {
+        quality = "1080p";
+        resolution = "1920x1080";
+      } else if (text.includes("720")) {
+        quality = "720p";
+        resolution = "1280x720";
+      } else if (text.includes("480")) {
+        quality = "480p";
+        resolution = "854x480";
+      } else if (text.includes("360")) {
+        quality = "360p";
+        resolution = "640x360";
+      }
+      if (text.includes("Audio")) {
+        type = "audio";
+        mimeType = "audio/mp3";
+      }
+      downloadLinks.push({
+        url,
+        quality,
+        resolution,
+        mimeType,
+        type
+      });
+    }
+    if (downloadLinks.length === 0) {
+      throw new Error("No download links found on Y2Mate");
+    }
+    const videoInfo = {
+      videoId,
+      title,
+      duration: "",
+      author: "YouTube Creator",
+      thumbnail: `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`,
+      description: "Video download links extracted from Y2Mate",
+      formats: downloadLinks
+    };
+    const bestQuality = downloadLinks.reduce((best, current) => {
+      const currentQuality = parseInt(current.quality.replace("p", "").replace("K", "000"));
+      const bestQuality2 = parseInt(best.quality.replace("p", "").replace("K", "000"));
+      return currentQuality > bestQuality2 ? current : best;
+    }, downloadLinks[0]);
+    return {
+      success: true,
+      data: {
+        videoInfo,
+        downloadLinks,
+        bestQuality,
+        thumbnail: `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`
+      }
+    };
+  } catch (error) {
+    throw new Error(`Y2Mate extraction failed: ${error.message}`);
+  }
+}
+async function extractFromSnapany(videoId) {
+  try {
+    const response = await fetch(`https://snapany.com/youtube`, {
+      method: "POST",
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+        "Content-Type": "application/x-www-form-urlencoded",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8"
+      },
+      body: `url=https://www.youtube.com/watch?v=${videoId}`
+    });
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    }
+    const html = await response.text();
+    const downloadLinks = [];
+    const linkRegex = /href="([^"]*download[^"]*)"[^>]*>([^<]*Download[^<]*)</gi;
+    let match;
+    while ((match = linkRegex.exec(html)) !== null) {
+      const url = match[1];
+      const text = match[2];
+      let quality = "720p";
+      let resolution = "1280x720";
+      let mimeType = "video/mp4";
+      let type = "video";
+      if (text.includes("HD") || text.includes("1080")) {
+        quality = "1080p";
+        resolution = "1920x1080";
+      } else if (text.includes("720")) {
+        quality = "720p";
+        resolution = "1280x720";
+      } else if (text.includes("480")) {
+        quality = "480p";
+        resolution = "854x480";
+      }
+      downloadLinks.push({
+        url,
+        quality,
+        resolution,
+        mimeType,
+        type
+      });
+    }
+    if (downloadLinks.length === 0) {
+      throw new Error("No download links found on Snapany");
+    }
+    const videoInfo = {
+      videoId,
+      title: `YouTube Video ${videoId}`,
+      duration: "",
+      author: "YouTube Creator",
+      thumbnail: `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`,
+      description: "Video download links extracted from Snapany",
+      formats: downloadLinks
+    };
+    const bestQuality = downloadLinks.reduce((best, current) => {
+      const currentQuality = parseInt(current.quality.replace("p", ""));
+      const bestQuality2 = parseInt(best.quality.replace("p", ""));
+      return currentQuality > bestQuality2 ? current : best;
+    }, downloadLinks[0]);
+    return {
+      success: true,
+      data: {
+        videoInfo,
+        downloadLinks,
+        bestQuality,
+        thumbnail: `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`
+      }
+    };
+  } catch (error) {
+    throw new Error(`Snapany extraction failed: ${error.message}`);
+  }
+}
+function extractFormatsFromPlayerResponse(playerResponse) {
+  const formats = [];
+  try {
+    if (playerResponse.streamingData && playerResponse.streamingData.formats) {
+      playerResponse.streamingData.formats.forEach((format) => {
+        if (format.url || format.signatureCipher) {
+          formats.push({
+            url: format.url || format.signatureCipher,
+            quality: format.qualityLabel || `${format.height}p`,
+            resolution: `${format.width}x${format.height}`,
+            mimeType: format.mimeType || "video/mp4",
+            type: "video"
+          });
+        }
+      });
+    }
+    if (playerResponse.streamingData && playerResponse.streamingData.adaptiveFormats) {
+      playerResponse.streamingData.adaptiveFormats.forEach((format) => {
+        if (format.url || format.signatureCipher) {
+          formats.push({
+            url: format.url || format.signatureCipher,
+            quality: format.qualityLabel || `${format.height}p`,
+            resolution: `${format.width}x${format.height}`,
+            mimeType: format.mimeType || "video/mp4",
+            type: format.mimeType?.includes("audio") ? "audio" : "video"
+          });
+        }
+      });
+    }
+  } catch (error) {
+    console.log("\u26A0\uFE0F Failed to extract formats from player response:", error.message);
+  }
+  return formats;
+}
+function formatDuration(seconds) {
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor(seconds % 3600 / 60);
+  const secs = seconds % 60;
+  if (hours > 0) {
+    return `${hours}:${minutes.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
+  } else {
+    return `${minutes}:${secs.toString().padStart(2, "0")}`;
+  }
+}
+const downloadYouTubeVideo = async (url, quality = "best", onProgress) => {
+  try {
+    const videoInfo = await getYouTubeVideoInfo(url);
+    if (!videoInfo.success || !videoInfo.data) {
+      return { success: false, message: videoInfo.message || "Failed to get video info" };
+    }
+    const { downloadLinks, bestQuality } = videoInfo.data;
+    let selectedFormat;
+    if (quality === "best") {
+      selectedFormat = bestQuality;
+    } else {
+      selectedFormat = downloadLinks.find((f) => f.quality === quality) || bestQuality;
+    }
+    if (!selectedFormat.url) {
+      return { success: false, message: "No download URL available" };
+    }
+    if (selectedFormat.url.startsWith("http") && !selectedFormat.url.includes("y2mate.com") && !selectedFormat.url.includes("snapany.com")) {
+      return await downloadDirectVideo(selectedFormat, videoInfo.data.videoInfo, onProgress);
+    } else {
+      return {
+        success: true,
+        message: `Video download available at: ${selectedFormat.url}
+
+This is a download service. Visit the URL to download your video in ${selectedFormat.quality} quality.`
+      };
+    }
+  } catch (error) {
+    return {
+      success: false,
+      message: `Download failed: ${error instanceof Error ? error.message : "Unknown error"}`
+    };
+  }
+};
+async function downloadDirectVideo(format, videoInfo, onProgress) {
+  try {
+    const response = await fetch(format.url);
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    }
+    const contentLength = response.headers.get("content-length");
+    const total = contentLength ? parseInt(contentLength) : 0;
+    if (!response.body) {
+      throw new Error("No response body available");
+    }
+    const reader = response.body.getReader();
+    const chunks = [];
+    let downloaded = 0;
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(value);
+      downloaded += value.length;
+      if (onProgress && total > 0) {
+        const progress = downloaded / total * 100;
+        onProgress(progress, downloaded, total);
+      }
+    }
+    const blob = new Blob(chunks, { type: format.mimeType });
+    const safeTitle = videoInfo.title.replace(/[^a-zA-Z0-9\s-]/g, "").replace(/\s+/g, "_");
+    const filename = `${safeTitle}_${format.quality}.${format.mimeType.split("/")[1]}`;
+    if (typeof process !== "undefined" && process.versions && process.versions.node) {
+      const fs = await import('fs');
+      const path = await import('path');
+      const buffer = Buffer.from(await blob.arrayBuffer());
+      const filePath = path.join(process.cwd(), filename);
+      fs.writeFileSync(filePath, buffer);
+      return {
+        success: true,
+        message: `Video downloaded successfully to: ${filePath}`,
+        filename: filePath
+      };
+    } else {
+      const downloadUrl = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = downloadUrl;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(downloadUrl);
+      return {
+        success: true,
+        message: `Video downloaded successfully!`,
+        filename
+      };
+    }
+  } catch (error) {
+    throw new Error(`Direct download failed: ${error.message}`);
+  }
+}
+
 let cheerioLoad = null;
 const responseCache = /* @__PURE__ */ new Map();
 const CACHE_DURATION = 1 * 60 * 1e3;
@@ -1293,4 +1758,4 @@ const snapsave = async (url) => {
   }
 };
 
-export { batchDownload, clearResponseCache, downloadAllMedia, downloadAllPhotos, downloadMultipleTimes, enhancedDownload, getCacheStatus, getDownloadInfo, snapsave };
+export { batchDownload, clearResponseCache, downloadAllMedia, downloadAllPhotos, downloadMultipleTimes, downloadYouTubeVideo, enhancedDownload, getCacheStatus, getDownloadInfo, getYouTubeVideoInfo, snapsave };

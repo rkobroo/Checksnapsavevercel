@@ -148,6 +148,10 @@ export {
   downloadMultipleTimes
 } from './enhanced-downloader';
 
+// Export custom YouTube downloader functions
+export { getYouTubeVideoInfo, downloadYouTubeVideo } from './youtube-downloader';
+export type { YouTubeVideoInfo, VideoFormat, DownloadResult } from './youtube-downloader';
+
 export const snapsave = async (url: string): Promise<SnapSaveDownloaderResponse> => {
   try {
     // Check cache first for faster response
