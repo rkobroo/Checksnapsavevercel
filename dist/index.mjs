@@ -14,15 +14,54 @@ const fixThumbnail = (url) => {
 const generateCleanFilename = (title, type, extension) => {
   if (!title || title.trim().length === 0) {
     const timestamp = (/* @__PURE__ */ new Date()).toISOString().replace(/[:.]/g, "-").slice(0, 19);
-    return `video_${timestamp}.${extension || type}`;
+    return `video_${timestamp}.${type}`;
   }
   let cleanTitle = title.replace(/[<>:"/\\|?*]/g, "").replace(/[^\w\s\-_]/g, "").replace(/\s+/g, " ").trim().substring(0, 100);
   if (cleanTitle.length === 0) {
     const timestamp = (/* @__PURE__ */ new Date()).toISOString().replace(/[:.]/g, "-").slice(0, 19);
-    return `video_${timestamp}.${extension || type}`;
+    return `video_${timestamp}.${type}`;
   }
+  const defaultExtensions = {
+    "video": "mp4",
+    "image": "jpg",
+    "zip": "zip"
+  };
+  const ext = defaultExtensions[type];
+  return `${cleanTitle}.${ext}`;
+};
+const generateUniqueFilename = (title, type, extension) => {
+  const randomNumber = Math.floor(1e5 + Math.random() * 9e5);
+  if (title.trim().length === 0) {
+    const timestamp = (/* @__PURE__ */ new Date()).toISOString().replace(/[:.]/g, "-").slice(0, 19);
+    return `video_${timestamp}_${randomNumber}.${type}`;
+  }
+  let cleanTitle = title.replace(/[<>:"/\\|?*]/g, "").replace(/[^\w\s\-_]/g, "").replace(/\s+/g, " ").trim().substring(0, 80);
+  if (cleanTitle.length === 0) {
+    const timestamp = (/* @__PURE__ */ new Date()).toISOString().replace(/[:.]/g, "-").slice(0, 19);
+    return `video_${timestamp}_${randomNumber}.${type}`;
+  }
+  const titleWithRandom = `${cleanTitle}_${randomNumber}`;
+  const defaultExtensions = {
+    "video": "mp4",
+    "image": "jpg",
+    "zip": "zip"
+  };
+  const ext = defaultExtensions[type] || "mp4";
+  return `${titleWithRandom}.${ext}`;
+};
+const generateFilenameWithNumber = (title, type, number, extension) => {
+  if (!title || title.trim().length === 0) {
+    const timestamp = (/* @__PURE__ */ new Date()).toISOString().replace(/[:.]/g, "-").slice(0, 19);
+    return `video_${timestamp}_${number}.${extension || type}`;
+  }
+  let cleanTitle = title.replace(/[<>:"/\\|?*]/g, "").replace(/[^\w\s\-_]/g, "").replace(/\s+/g, " ").trim().substring(0, 80);
+  if (cleanTitle.length === 0) {
+    const timestamp = (/* @__PURE__ */ new Date()).toISOString().replace(/[:.]/g, "-").slice(0, 19);
+    return `video_${timestamp}_${number}.${extension || type}`;
+  }
+  const titleWithNumber = `${cleanTitle}_${number}`;
   if (extension) {
-    return `${cleanTitle}.${extension}`;
+    return `${titleWithNumber}.${extension}`;
   }
   const defaultExtensions = {
     "video": "mp4",
@@ -30,7 +69,7 @@ const generateCleanFilename = (title, type, extension) => {
     "zip": "zip"
   };
   const ext = defaultExtensions[type] || "mp4";
-  return `${cleanTitle}.${ext}`;
+  return `${titleWithNumber}.${ext}`;
 };
 
 function decodeSnapApp(args) {
@@ -107,7 +146,7 @@ const enhancedDownload = async (url) => {
     const highestQuality = allMedia.reduce((best, current) => {
       return (current.quality || 0) > (best.quality || 0) ? current : best;
     }, bestMedia);
-    const filename = generateCleanFilename(
+    const filename = generateUniqueFilename(
       data.title || bestMedia.title || highestQuality.title || "video",
       highestQuality.type || bestMedia.type || "video"
     );
@@ -170,9 +209,10 @@ const downloadAllPhotos = async (url) => {
     }
     const photoObjects = photos.map((item, index) => ({
       url: item.url || "",
-      filename: generateCleanFilename(
-        `${data.title || (isInstagram ? "instagram_photo" : "photo")}_${index + 1}`,
+      filename: generateFilenameWithNumber(
+        data.title || (isInstagram ? "instagram_photo" : "photo"),
         "image",
+        index + 1,
         "jpg"
       ),
       index: index + 1,
@@ -218,9 +258,10 @@ const downloadAllMedia = async (url) => {
     const allMedia = data.media || [];
     const photos = allMedia.filter((item) => item.type === "image" || item.type === "photo").map((item, index) => ({
       url: item.url || "",
-      filename: generateCleanFilename(
-        `${data.title || "photo"}_${index + 1}`,
+      filename: generateFilenameWithNumber(
+        data.title || "photo",
         "image",
+        index + 1,
         "jpg"
       ),
       index: index + 1,
@@ -228,9 +269,10 @@ const downloadAllMedia = async (url) => {
       thumbnail: item.thumbnail || data.thumbnail || data.preview || ""
     })).filter((photo) => photo.url && photo.url.startsWith("http"));
     const videos = allMedia.filter((item) => item.type === "video").map((item, index) => {
-      const filename = generateCleanFilename(
-        `${data.title || "video"}_${index + 1}`,
+      const filename = generateFilenameWithNumber(
+        data.title || "video",
         "video",
+        index + 1,
         "mp4"
       );
       return {
@@ -285,6 +327,54 @@ function getBestQualityMedia(media) {
   if (videoItem) return videoItem;
   return sortedMedia[0];
 }
+const downloadMultipleTimes = async (url, count = 3) => {
+  try {
+    if (count < 1 || count > 10) {
+      return {
+        success: false,
+        message: "Count must be between 1 and 10"
+      };
+    }
+    const result = await enhancedDownload(url);
+    if (!result.success || !result.data) {
+      return { success: false, message: result.message || "Download failed" };
+    }
+    const { data } = result;
+    const downloads = [];
+    for (let i = 1; i <= count; i++) {
+      const filename = generateFilenameWithNumber(
+        data.title,
+        data.type,
+        i,
+        data.type === "video" ? "mp4" : "jpg"
+      );
+      downloads.push({
+        index: i,
+        filename,
+        downloadUrl: data.downloadUrl,
+        quality: data.quality,
+        qualityLabel: data.qualityLabel || "Standard",
+        type: data.type
+      });
+    }
+    return {
+      success: true,
+      data: {
+        title: data.title,
+        description: data.description,
+        author: data.author,
+        thumbnail: data.thumbnail,
+        originalUrl: url,
+        downloads
+      }
+    };
+  } catch (error) {
+    return {
+      success: false,
+      message: error instanceof Error ? error.message : "Multiple download failed"
+    };
+  }
+};
 const getDownloadInfo = async (url) => {
   try {
     const platform = getPlatform(url);
@@ -849,4 +939,4 @@ const snapsave = async (url) => {
   }
 };
 
-export { batchDownload, downloadAllMedia, downloadAllPhotos, enhancedDownload, getDownloadInfo, snapsave };
+export { batchDownload, downloadAllMedia, downloadAllPhotos, downloadMultipleTimes, enhancedDownload, getDownloadInfo, snapsave };

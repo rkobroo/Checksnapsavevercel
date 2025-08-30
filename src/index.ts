@@ -122,7 +122,8 @@ export {
   batchDownload, 
   getDownloadInfo, 
   downloadAllPhotos, 
-  downloadAllMedia 
+  downloadAllMedia,
+  downloadMultipleTimes
 } from './enhanced-downloader';
 
 export const snapsave = async (url: string): Promise<SnapSaveDownloaderResponse> => {

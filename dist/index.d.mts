@@ -107,10 +107,33 @@ declare const downloadAllMedia: (url: string) => Promise<{
     };
 }>;
 /**
+ * Download the same video/photo multiple times with unique filenames
+ * Perfect for when you want to download the same content multiple times
+ */
+declare const downloadMultipleTimes: (url: string, count?: number) => Promise<{
+    success: boolean;
+    message?: string;
+    data?: {
+        title: string;
+        description: string;
+        author: string;
+        thumbnail: string;
+        originalUrl: string;
+        downloads: Array<{
+            index: number;
+            filename: string;
+            downloadUrl: string;
+            quality: number;
+            qualityLabel: string;
+            type: string;
+        }>;
+    };
+}>;
+/**
  * Get download info without actually downloading (fast metadata response)
  */
 declare const getDownloadInfo: (url: string) => Promise<EnhancedDownloadResponse>;
 
 declare const snapsave: (url: string) => Promise<SnapSaveDownloaderResponse>;
 
-export { batchDownload, downloadAllMedia, downloadAllPhotos, enhancedDownload, getDownloadInfo, snapsave };
+export { batchDownload, downloadAllMedia, downloadAllPhotos, downloadMultipleTimes, enhancedDownload, getDownloadInfo, snapsave };
