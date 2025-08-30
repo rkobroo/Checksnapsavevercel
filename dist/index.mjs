@@ -797,58 +797,59 @@ const snapsave = async (url) => {
           console.log("\u26A0\uFE0F yt-download.org failed:", ytDownloadError.message);
         }
         try {
-          const videoInfoUrl = `https://www.youtube.com/watch?v=${videoId}`;
           const result2 = {
             success: true,
             data: {
               title: `YouTube Video ${videoId}`,
-              description: "YouTube video download - multiple quality options available",
+              description: "YouTube video download - multiple download options available",
               preview: `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`,
               duration: "",
               author: "YouTube Creator",
               thumbnail: `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`,
               media: [
-                // High quality video options with working download links
-                {
-                  url: `https://www.yt-download.org/api/button/mp4/${videoId}`,
-                  type: "video",
-                  title: `YouTube Video ${videoId} - 1080p MP4`,
-                  duration: "",
-                  author: "YouTube Creator",
-                  thumbnail: `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`,
-                  quality: 1080,
-                  qualityLabel: getQualityLabel$1(1080)
-                },
-                {
-                  url: `https://www.yt-download.org/api/button/mp4/${videoId}?quality=720`,
-                  type: "video",
-                  title: `YouTube Video ${videoId} - 720p MP4`,
-                  duration: "",
-                  author: "YouTube Creator",
-                  thumbnail: `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`,
-                  quality: 720,
-                  qualityLabel: getQualityLabel$1(720)
-                },
-                {
-                  url: `https://www.yt-download.org/api/button/mp4/${videoId}?quality=480`,
-                  type: "video",
-                  title: `YouTube Video ${videoId} - 480p MP4`,
-                  duration: "",
-                  author: "YouTube Creator",
-                  thumbnail: `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`,
-                  quality: 480,
-                  qualityLabel: getQualityLabel$1(480)
-                },
-                // Also provide the thumbnail as an option
+                // Option 1: High-quality thumbnail (always works)
                 {
                   url: `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`,
                   type: "image",
-                  title: `YouTube Video ${videoId} - Thumbnail Image`,
+                  title: `YouTube Video ${videoId} - High Quality Thumbnail`,
                   duration: "",
                   author: "YouTube Creator",
                   thumbnail: `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`,
                   quality: 1080,
-                  qualityLabel: "Thumbnail"
+                  qualityLabel: "Thumbnail (1080p)"
+                },
+                // Option 2: Medium quality thumbnail
+                {
+                  url: `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`,
+                  type: "image",
+                  title: `YouTube Video ${videoId} - Medium Quality Thumbnail`,
+                  duration: "",
+                  author: "YouTube Creator",
+                  thumbnail: `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`,
+                  quality: 720,
+                  qualityLabel: "Thumbnail (720p)"
+                },
+                // Option 3: Standard quality thumbnail
+                {
+                  url: `https://img.youtube.com/vi/${videoId}/sddefault.jpg`,
+                  type: "image",
+                  title: `YouTube Video ${videoId} - Standard Quality Thumbnail`,
+                  duration: "",
+                  author: "YouTube Creator",
+                  thumbnail: `https://img.youtube.com/vi/${videoId}/sddefault.jpg`,
+                  quality: 480,
+                  qualityLabel: "Thumbnail (480p)"
+                },
+                // Option 4: Video info page (for users to get video details)
+                {
+                  url: `https://www.youtube.com/watch?v=${videoId}`,
+                  type: "info",
+                  title: `YouTube Video ${videoId} - Video Info Page`,
+                  duration: "",
+                  author: "YouTube Creator",
+                  thumbnail: `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`,
+                  quality: 0,
+                  qualityLabel: "Info Page"
                 }
               ]
             }
@@ -860,7 +861,7 @@ const snapsave = async (url) => {
             success: true,
             data: {
               title: `YouTube Video ${videoId}`,
-              description: "YouTube video download - thumbnail available. Video download services are temporarily unavailable.",
+              description: "YouTube video download - basic thumbnail available. For video download, please visit the YouTube page and use browser extensions.",
               preview: `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`,
               duration: "",
               author: "YouTube Creator",
