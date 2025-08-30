@@ -12,10 +12,22 @@ const fixThumbnail = (url) => {
   return url.includes(toReplace) ? decodeURIComponent(url.replace(toReplace, "")) : url;
 };
 const generateCleanFilename = (title, type, extension) => {
-  let cleanTitle = title.replace(/[<>:"/\\|?*]/g, "").replace(/\s+/g, " ").trim().substring(0, 100);
+  if (!title || title.trim().length === 0) {
+    const timestamp = (/* @__PURE__ */ new Date()).toISOString().replace(/[:.]/g, "-").slice(0, 19);
+    return `video_${timestamp}.${extension || type}`;
+  }
+  let cleanTitle = title.replace(/[<>:"/\\|?*]/g, "").replace(/[^\w\s\-_]/g, "").replace(/\s+/g, " ").trim().substring(0, 100);
+  if (cleanTitle.length === 0) {
+    const timestamp = (/* @__PURE__ */ new Date()).toISOString().replace(/[:.]/g, "-").slice(0, 19);
+    return `video_${timestamp}.${extension || type}`;
+  }
+  if (extension) {
+    return `${cleanTitle}.${extension}`;
+  }
   const defaultExtensions = {
     "video": "mp4",
-    "image": "jpg"
+    "image": "jpg",
+    "zip": "zip"
   };
   const ext = defaultExtensions[type] || "mp4";
   return `${cleanTitle}.${ext}`;
@@ -91,9 +103,13 @@ const enhancedDownload = async (url) => {
     if (!bestMedia || !bestMedia.url) {
       return { success: false, message: "No download links found" };
     }
+    const allMedia = data.media || [];
+    const highestQuality = allMedia.reduce((best, current) => {
+      return (current.quality || 0) > (best.quality || 0) ? current : best;
+    }, bestMedia);
     const filename = generateCleanFilename(
-      data.title || bestMedia.title || "video",
-      bestMedia.type || "video"
+      data.title || bestMedia.title || highestQuality.title || "video",
+      highestQuality.type || bestMedia.type || "video"
     );
     return {
       success: true,
@@ -104,9 +120,9 @@ const enhancedDownload = async (url) => {
         author: data.author || bestMedia.author || "",
         thumbnail: data.thumbnail || bestMedia.thumbnail || data.preview || "",
         preview: data.preview || "",
-        downloadUrl: bestMedia.url,
-        type: bestMedia.type || "video",
-        quality: bestMedia.quality || 0,
+        downloadUrl: highestQuality.url || bestMedia.url,
+        type: highestQuality.type || bestMedia.type || "video",
+        quality: highestQuality.quality || bestMedia.quality || 0,
         filename,
         platform
       }
@@ -136,6 +152,116 @@ const batchDownload = async (urls) => {
     return {
       success: false,
       message: error instanceof Error ? error.message : "Batch download failed"
+    };
+  }
+};
+const downloadAllPhotos = async (url) => {
+  try {
+    const result = await snapsave(url);
+    if (!result.success || !result.data) {
+      return { success: false, message: result.message || "Failed to get media data" };
+    }
+    const { data } = result;
+    const allMedia = data.media || [];
+    const photos = allMedia.filter((item) => item.type === "image" || item.type === "photo").map((item, index) => ({
+      url: item.url || "",
+      filename: generateCleanFilename(
+        `${data.title || "photo"}_${index + 1}`,
+        "image",
+        "jpg"
+      ),
+      index: index + 1,
+      quality: item.quality || 500,
+      thumbnail: item.thumbnail || data.thumbnail || data.preview || ""
+    })).filter((photo) => photo.url && photo.url.startsWith("http"));
+    if (photos.length === 0) {
+      return {
+        success: false,
+        message: "No photos found. This might be a video-only post."
+      };
+    }
+    const zipFilename = generateCleanFilename(
+      `${data.title || "photos"}_${photos.length}_photos`,
+      "zip"
+    );
+    return {
+      success: true,
+      data: {
+        title: data.title || "Photo Collection",
+        description: data.description || "",
+        author: data.author || "",
+        totalPhotos: photos.length,
+        photos,
+        zipFilename
+      }
+    };
+  } catch (error) {
+    return {
+      success: false,
+      message: error instanceof Error ? error.message : "Failed to get photos"
+    };
+  }
+};
+const downloadAllMedia = async (url) => {
+  try {
+    const result = await snapsave(url);
+    if (!result.success || !result.data) {
+      return { success: false, message: result.message || "Failed to get media data" };
+    }
+    const { data } = result;
+    const allMedia = data.media || [];
+    const photos = allMedia.filter((item) => item.type === "image" || item.type === "photo").map((item, index) => ({
+      url: item.url || "",
+      filename: generateCleanFilename(
+        `${data.title || "photo"}_${index + 1}`,
+        "image",
+        "jpg"
+      ),
+      index: index + 1,
+      quality: item.quality || 500,
+      thumbnail: item.thumbnail || data.thumbnail || data.preview || ""
+    })).filter((photo) => photo.url && photo.url.startsWith("http"));
+    const videos = allMedia.filter((item) => item.type === "video").map((item, index) => {
+      const filename = generateCleanFilename(
+        `${data.title || "video"}_${index + 1}`,
+        "video",
+        "mp4"
+      );
+      return {
+        url: item.url || "",
+        filename,
+        index: index + 1,
+        quality: item.quality || 500,
+        thumbnail: item.thumbnail || data.thumbnail || data.preview || "",
+        duration: item.duration || ""
+      };
+    }).filter((video) => video.url && video.url.startsWith("http"));
+    if (photos.length === 0 && videos.length === 0) {
+      return {
+        success: false,
+        message: "No media found to download."
+      };
+    }
+    const zipFilename = generateCleanFilename(
+      `${data.title || "media"}_${photos.length + videos.length}_items`,
+      "zip"
+    );
+    return {
+      success: true,
+      data: {
+        title: data.title || "Media Collection",
+        description: data.description || "",
+        author: data.author || "",
+        totalItems: photos.length + videos.length,
+        photos,
+        videos,
+        zipFilename
+      }
+    };
+  } catch (error) {
+    return {
+      success: false,
+      message: error instanceof Error ? error.message : "Failed to get media"
     };
   }
 };
@@ -226,6 +352,47 @@ function extractAuthor(text) {
   const authorMatch = text.match(/by\s+([^,\n]+)/i) || text.match(/@(\w+)/) || text.match(/([A-Z][a-z]+)\s+[A-Z][a-z]+/);
   return authorMatch ? authorMatch[1].trim() : "";
 }
+function getQualityScore(resolution) {
+  if (!resolution) return 0;
+  const res = resolution.toLowerCase();
+  if (res.includes("4k") || res.includes("2160") || res.includes("uhd")) return 4e3;
+  if (res.includes("2k") || res.includes("1440")) return 2e3;
+  if (res.includes("1080") || res.includes("hd") || res.includes("fullhd") || res.includes("fhd")) return 1080;
+  if (res.includes("720") || res.includes("hd")) return 720;
+  if (res.includes("480") || res.includes("sd")) return 480;
+  if (res.includes("360")) return 360;
+  if (res.includes("240")) return 240;
+  const pixelMatch = res.match(/(\d+)[x×](\d+)/);
+  if (pixelMatch) {
+    const height = parseInt(pixelMatch[2]);
+    if (height >= 2160) return 4e3;
+    if (height >= 1440) return 2e3;
+    if (height >= 1080) return 1080;
+    if (height >= 720) return 720;
+    if (height >= 480) return 480;
+    if (height >= 360) return 360;
+    return height;
+  }
+  const pMatch = res.match(/(\d+)p/);
+  if (pMatch) {
+    const height = parseInt(pMatch[1]);
+    return height;
+  }
+  if (res.includes("high") || res.includes("best") || res.includes("original")) return 1e3;
+  if (res.includes("medium") || res.includes("normal")) return 500;
+  if (res.includes("low") || res.includes("worst")) return 100;
+  return 500;
+}
+function getQualityLabel(quality) {
+  if (quality >= 4e3) return "4K Ultra HD";
+  if (quality >= 2e3) return "2K HD";
+  if (quality >= 1080) return "Full HD (1080p)";
+  if (quality >= 720) return "HD (720p)";
+  if (quality >= 480) return "SD (480p)";
+  if (quality >= 360) return "Low (360p)";
+  if (quality >= 240) return "Very Low (240p)";
+  return "Standard";
+}
 const snapsave = async (url) => {
   try {
     const cacheKey = url;
@@ -294,6 +461,13 @@ const snapsave = async (url) => {
       const bestLink = downloadLinks[0];
       let _url = bestLink?.url;
       const type = bestLink?.type || "video";
+      if (bestLink && bestLink.quality < 1e3) {
+        const hdLink = downloadLinks.find((link) => link.quality >= 1e3);
+        if (hdLink) {
+          _url = hdLink.url;
+          bestLink.quality = hdLink.quality;
+        }
+      }
       let description = $3(".video-title").text().trim() || $3(".video-des").text().trim() || $3("h3").first().text().trim() || $3(".desc").text().trim() || $3(".video-description").text().trim() || $3("p").first().text().trim() || $3(".title").text().trim();
       const title = extractCleanTitle(description, "tiktok");
       const duration = extractDuration($3(".video-duration").text().trim() || $3(".duration").text().trim() || "");
@@ -331,7 +505,8 @@ const snapsave = async (url) => {
             duration,
             author,
             thumbnail: preview,
-            quality: bestLink?.quality || 0
+            quality: bestLink?.quality || 0,
+            qualityLabel: getQualityLabel(bestLink?.quality || 0)
           }]
         }
       };
@@ -389,6 +564,13 @@ const snapsave = async (url) => {
       const bestTwitterLink = twitterLinks[0];
       let _url = bestTwitterLink?.url;
       const type = bestTwitterLink?.type || "video";
+      if (bestTwitterLink && bestTwitterLink.quality < 1e3) {
+        const hdLink = twitterLinks.find((link) => link.quality >= 1e3);
+        if (hdLink) {
+          _url = hdLink.url;
+          bestTwitterLink.quality = hdLink.quality;
+        }
+      }
       let description = $22(".videotikmate-middle > p > span").text().trim() || $22(".video-title").text().trim() || $22("p").first().text().trim() || $22(".desc").text().trim() || $22("h3").text().trim();
       const title = extractCleanTitle(description, "twitter");
       const duration = extractDuration($22(".video-duration").text().trim() || $22(".duration").text().trim() || "");
@@ -417,7 +599,8 @@ const snapsave = async (url) => {
             duration,
             author,
             thumbnail: preview,
-            quality: bestTwitterLink?.quality || 0
+            quality: bestTwitterLink?.quality || 0,
+            qualityLabel: getQualityLabel(bestTwitterLink?.quality || 0)
           }]
         }
       };
@@ -489,7 +672,16 @@ const snapsave = async (url) => {
         mediaItems.sort((a, b) => {
           return (b.quality || 0) - (a.quality || 0);
         });
-        media.push(...mediaItems);
+        if (mediaItems.length > 0) {
+          const bestQuality = mediaItems[0];
+          media.push({
+            ...bestQuality,
+            // Ensure we have the best quality indicator
+            quality: bestQuality.quality || 0,
+            // Add quality label for user information
+            qualityLabel: getQualityLabel(bestQuality.quality || 0)
+          });
+        }
       } else if ($("div.card").length) {
         const cardItems = [];
         $("div.card").each((_, el) => {
@@ -511,10 +703,14 @@ const snapsave = async (url) => {
           });
         });
         cardItems.sort((a, b) => b.quality - a.quality);
-        cardItems.forEach((item) => {
-          const { quality, ...mediaItem } = item;
-          media.push(mediaItem);
-        });
+        if (cardItems.length > 0) {
+          const bestQuality = cardItems[0];
+          media.push({
+            ...bestQuality,
+            quality: bestQuality.quality || 0,
+            qualityLabel: getQualityLabel(bestQuality.quality || 0)
+          });
+        }
       } else {
         let url2 = $("a[href*='download']").attr("href") || $("a").first().attr("href") || $("button").attr("onclick");
         const aText = $("a").text().trim() || $("button").text().trim();
@@ -557,10 +753,14 @@ const snapsave = async (url) => {
         });
       });
       downloadItems.sort((a, b) => b.quality - a.quality);
-      downloadItems.forEach((item) => {
-        const { quality, ...mediaItem } = item;
-        media.push(mediaItem);
-      });
+      if (downloadItems.length > 0) {
+        const bestQuality = downloadItems[0];
+        media.push({
+          ...bestQuality,
+          quality: bestQuality.quality || 0,
+          qualityLabel: getQualityLabel(bestQuality.quality || 0)
+        });
+      }
     }
     if (!media.length) return { success: false, message: "Blank data" };
     const result = { success: true, data: { ...data, media } };
@@ -571,4 +771,4 @@ const snapsave = async (url) => {
   }
 };
 
-export { batchDownload, enhancedDownload, getDownloadInfo, snapsave };
+export { batchDownload, downloadAllMedia, downloadAllPhotos, enhancedDownload, getDownloadInfo, snapsave };
