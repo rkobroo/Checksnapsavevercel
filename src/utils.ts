@@ -50,3 +50,40 @@ export const generateCleanFilename = (title: string, type: string, extension?: s
   const ext = defaultExtensions[type as keyof typeof defaultExtensions] || 'mp4';
   return `${cleanTitle}.${ext}`;
 };
+
+/**
+ * Generate download links for all photos in one click
+ */
+export const generatePhotoDownloadLinks = (photos: Array<{
+  url: string;
+  filename: string;
+  index: number;
+  quality: number;
+  thumbnail: string;
+}>) => {
+  return photos.map(photo => ({
+    ...photo,
+    downloadLink: photo.url,
+    // Add direct download attribute for browser download
+    downloadAttribute: `download="${photo.filename}"`
+  }));
+};
+
+/**
+ * Generate bulk download instructions
+ */
+export const generateBulkDownloadInstructions = (totalPhotos: number, platform: string) => {
+  const instructions = [
+    `📸 Found ${totalPhotos} photos on ${platform}`,
+    `🚀 All photos are ready for download in one click!`,
+    `📁 Each photo will be saved with a unique filename`,
+    `💡 Tip: Use browser's "Save all" feature or download individually`
+  ];
+  
+  if (totalPhotos > 10) {
+    instructions.push(`⚠️ Large collection detected (${totalPhotos} photos)`);
+    instructions.push(`💾 Consider downloading in smaller batches for better performance`);
+  }
+  
+  return instructions;
+};

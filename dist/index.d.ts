@@ -9,6 +9,7 @@ interface SnapSaveDownloaderMedia {
     author?: string;
     description?: string;
     quality?: number;
+    qualityLabel?: string;
 }
 interface SnapSaveDownloaderData {
     description?: string;
@@ -56,10 +57,60 @@ declare const enhancedDownload: (url: string) => Promise<EnhancedDownloadRespons
  */
 declare const batchDownload: (urls: string[]) => Promise<BatchDownloadResponse>;
 /**
+ * Download all photos from a single URL (Instagram carousels, etc.)
+ */
+declare const downloadAllPhotos: (url: string) => Promise<{
+    success: boolean;
+    message?: string;
+    data?: {
+        title: string;
+        description: string;
+        author: string;
+        totalPhotos: number;
+        photos: Array<{
+            url: string;
+            filename: string;
+            index: number;
+            quality: number;
+            thumbnail: string;
+        }>;
+        zipFilename?: string;
+    };
+}>;
+/**
+ * Download all media (photos + videos) from a single URL
+ */
+declare const downloadAllMedia: (url: string) => Promise<{
+    success: boolean;
+    message?: string;
+    data?: {
+        title: string;
+        description: string;
+        author: string;
+        totalItems: number;
+        photos: Array<{
+            url: string;
+            filename: string;
+            index: number;
+            quality: number;
+            thumbnail: string;
+        }>;
+        videos: Array<{
+            url: string;
+            filename: string;
+            index: number;
+            quality: number;
+            thumbnail: string;
+            duration: string;
+        }>;
+        zipFilename?: string;
+    };
+}>;
+/**
  * Get download info without actually downloading (fast metadata response)
  */
 declare const getDownloadInfo: (url: string) => Promise<EnhancedDownloadResponse>;
 
 declare const snapsave: (url: string) => Promise<SnapSaveDownloaderResponse>;
 
-export { batchDownload, enhancedDownload, getDownloadInfo, snapsave };
+export { batchDownload, downloadAllMedia, downloadAllPhotos, enhancedDownload, getDownloadInfo, snapsave };

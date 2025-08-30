@@ -118,10 +118,198 @@ export const batchDownload = async (urls: string[]): Promise<BatchDownloadRespon
 };
 
 /**
+ * Download all photos from a single URL (Instagram carousels, etc.)
+ */
+export const downloadAllPhotos = async (url: string): Promise<{
+  success: boolean;
+  message?: string;
+  data?: {
+    title: string;
+    description: string;
+    author: string;
+    totalPhotos: number;
+    photos: Array<{
+      url: string;
+      filename: string;
+      index: number;
+      quality: number;
+      thumbnail: string;
+    }>;
+    zipFilename?: string;
+  };
+}> => {
+  try {
+    // Get all media from the URL
+    const result = await snapsave(url);
+    
+    if (!result.success || !result.data) {
+      return { success: false, message: result.message || "Failed to get media data" };
+    }
+    
+    const { data } = result;
+    const allMedia = data.media || [];
+    
+    // Filter only photos/images
+    const photos = allMedia
+      .filter(item => item.type === 'image' || item.type === 'photo')
+      .map((item, index) => ({
+        url: item.url || '',
+        filename: generateCleanFilename(
+          `${data.title || 'photo'}_${index + 1}`,
+          'image',
+          'jpg'
+        ),
+        index: index + 1,
+        quality: item.quality || 500,
+        thumbnail: item.thumbnail || data.thumbnail || data.preview || ''
+      }))
+      .filter(photo => photo.url && photo.url.startsWith('http'));
+    
+    if (photos.length === 0) {
+      return { 
+        success: false, 
+        message: "No photos found. This might be a video-only post." 
+      };
+    }
+    
+    // Generate zip filename for bulk download
+    const zipFilename = generateCleanFilename(
+      `${data.title || 'photos'}_${photos.length}_photos`,
+      'zip'
+    );
+    
+    return {
+      success: true,
+      data: {
+        title: data.title || 'Photo Collection',
+        description: data.description || '',
+        author: data.author || '',
+        totalPhotos: photos.length,
+        photos,
+        zipFilename
+      }
+    };
+  } catch (error) {
+    return { 
+      success: false, 
+      message: error instanceof Error ? error.message : "Failed to get photos" 
+    };
+  }
+};
+
+/**
+ * Download all media (photos + videos) from a single URL
+ */
+export const downloadAllMedia = async (url: string): Promise<{
+  success: boolean;
+  message?: string;
+  data?: {
+    title: string;
+    description: string;
+    author: string;
+    totalItems: number;
+    photos: Array<{
+      url: string;
+      filename: string;
+      index: number;
+      quality: number;
+      thumbnail: string;
+    }>;
+    videos: Array<{
+      url: string;
+      filename: string;
+      index: number;
+      quality: number;
+      thumbnail: string;
+      duration: string;
+    }>;
+    zipFilename?: string;
+  };
+}> => {
+  try {
+    // Get all media from the URL
+    const result = await snapsave(url);
+    
+    if (!result.success || !result.data) {
+      return { success: false, message: result.message || "Failed to get media data" };
+    }
+    
+    const { data } = result;
+    const allMedia = data.media || [];
+    
+    // Separate photos and videos
+    const photos = allMedia
+      .filter(item => item.type === 'image' || item.type === 'photo')
+      .map((item, index) => ({
+        url: item.url || '',
+        filename: generateCleanFilename(
+          `${data.title || 'photo'}_${index + 1}`,
+          'image',
+          'jpg'
+        ),
+        index: index + 1,
+        quality: item.quality || 500,
+        thumbnail: item.thumbnail || data.thumbnail || data.preview || ''
+      }))
+      .filter(photo => photo.url && photo.url.startsWith('http'));
+    
+    const videos = allMedia
+      .filter(item => item.type === 'video')
+      .map((item, index) => {
+        const filename = generateCleanFilename(
+          `${data.title || 'video'}_${index + 1}`,
+          'video',
+          'mp4'
+        );
+        return {
+          url: item.url || '',
+          filename,
+          index: index + 1,
+          quality: item.quality || 500,
+          thumbnail: item.thumbnail || data.thumbnail || data.preview || '',
+          duration: item.duration || ''
+        };
+      })
+      .filter(video => video.url && video.url.startsWith('http'));
+    
+    if (photos.length === 0 && videos.length === 0) {
+      return { 
+        success: false, 
+        message: "No media found to download." 
+      };
+    }
+    
+    // Generate zip filename for bulk download
+    const zipFilename = generateCleanFilename(
+      `${data.title || 'media'}_${photos.length + videos.length}_items`,
+      'zip'
+    );
+    
+    return {
+      success: true,
+      data: {
+        title: data.title || 'Media Collection',
+        description: data.description || '',
+        author: data.author || '',
+        totalItems: photos.length + videos.length,
+        photos,
+        videos,
+        zipFilename
+      }
+    };
+  } catch (error) {
+    return { 
+      success: false, 
+      message: error instanceof Error ? error.message : "Failed to get media" 
+    };
+  }
+};
+
+/**
  * Get platform from URL
  */
 function getPlatform(url: string): string {
-  if (url.includes('tiktok')) return 'TikTok';
+  if (url.includes('tiktok')) return 'Tiktok';
   if (url.includes('twitter') || url.includes('x.com')) return 'Twitter/X';
   if (url.includes('facebook')) return 'Facebook';
   if (url.includes('instagram')) return 'Instagram';

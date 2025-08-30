@@ -117,7 +117,13 @@ import type { SnapSaveDownloaderData, SnapSaveDownloaderMedia, SnapSaveDownloade
 import { decryptSnapSave, decryptSnaptik } from "./decrypter";
 
 // Export enhanced functions
-export { enhancedDownload, batchDownload, getDownloadInfo } from './enhanced-downloader';
+export { 
+  enhancedDownload, 
+  batchDownload, 
+  getDownloadInfo, 
+  downloadAllPhotos, 
+  downloadAllMedia 
+} from './enhanced-downloader';
 
 export const snapsave = async (url: string): Promise<SnapSaveDownloaderResponse> => {
   try {
