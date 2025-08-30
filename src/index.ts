@@ -52,6 +52,17 @@ function extractAuthor(text: string): string {
                      text.match(/([A-Z][a-z]+)\s+[A-Z][a-z]+/);
   return authorMatch ? authorMatch[1].trim() : "";
 }
+
+// Helper function to get quality score from resolution
+function getQualityScore(resolution: string): number {
+  if (!resolution) return 0;
+  if (resolution.includes("1080") || resolution.includes("HD")) return 1000;
+  if (resolution.includes("720")) return 720;
+  if (resolution.includes("480")) return 480;
+  if (resolution.includes("360")) return 360;
+  const match = resolution.match(/(\d+)p/);
+  return match ? parseInt(match[1]) : 500; // default quality
+}
 import { facebookRegex, fixThumbnail, instagramRegex, normalizeURL, tiktokRegex, twitterRegex, userAgent } from "./utils";
 import type { SnapSaveDownloaderData, SnapSaveDownloaderMedia, SnapSaveDownloaderResponse } from "./types";
 import { decryptSnapSave, decryptSnaptik } from "./decrypter";
@@ -340,7 +351,16 @@ export const snapsave = async (url: string): Promise<SnapSaveDownloaderResponse>
       body: formData
     });
 
+    if (!response.ok) {
+      throw new Error(`Facebook API request failed: ${response.status} ${response.statusText}`);
+    }
+
     const html = await response.text();
+    
+    if (!html || html.length < 100) {
+      throw new Error("Facebook API returned empty or invalid response");
+    }
+    
     const decode = decryptSnapSave(html);
     const load = await getCheerioLoad();
     const $ = load(decode);
@@ -359,7 +379,10 @@ export const snapsave = async (url: string): Promise<SnapSaveDownloaderResponse>
                        $(".video-description").text().trim() ||
                        $("p").first().text().trim() ||
                        $("meta[property='og:title']").attr("content") ||
-                       $("title").text().trim();
+                       $("title").text().trim() ||
+                       $("h4").first().text().trim() ||
+                       $(".video-info h3").text().trim() ||
+                       $(".media-info h2").text().trim();
       
       // Extract clean title, duration, and author
       const platform = url.includes('instagram') ? 'instagram' : 'facebook';
@@ -398,26 +421,46 @@ export const snapsave = async (url: string): Promise<SnapSaveDownloaderResponse>
           const $td = $el.find("td");
           const resolution = $td.eq(0).text().trim();
           let _url = $td.eq(2).find("a").attr("href") || $td.eq(2).find("button").attr("onclick");
-          const shouldRender = /get_progressApi/ig.test(_url || "");
-          if (shouldRender) {
-            _url = "https://snapsave.app" + /get_progressApi\('(.*?)'\)/.exec(_url || "")?.[1] || _url;
-          }
-          // Remove duplicate dl parameters
-          if (_url && _url.includes("&dl=1&dl=1")) {
-            _url = _url.replace("&dl=1&dl=1", "&dl=1");
-          }
           
-                  mediaItems.push({
-          resolution,
-          ...shouldRender ? { shouldRender } : {},
-          url: _url,
-          type: resolution ? "video" : "image",
-          title: data.title,
-          duration: data.duration,
-          author: data.author,
-          thumbnail: data.thumbnail,
-          quality: getQualityScore(resolution)
-        });
+          // Handle different URL formats for Facebook
+          if (_url) {
+            // Handle get_progressApi format
+            const shouldRender = /get_progressApi/ig.test(_url);
+            if (shouldRender) {
+              const match = /get_progressApi\('(.*?)'\)/.exec(_url);
+              if (match && match[1]) {
+                _url = "https://snapsave.app" + match[1];
+              }
+            }
+            
+            // Handle onclick format
+            if (_url.startsWith("javascript:")) {
+              const match = /window\.open\('([^']+)'/.exec(_url);
+              if (match && match[1]) {
+                _url = match[1];
+              }
+            }
+            
+            // Remove duplicate dl parameters
+            if (_url.includes("&dl=1&dl=1")) {
+              _url = _url.replace("&dl=1&dl=1", "&dl=1");
+            }
+            
+            // Ensure URL is valid
+            if (_url && _url.startsWith("http")) {
+              mediaItems.push({
+                resolution,
+                ...shouldRender ? { shouldRender } : {},
+                url: _url,
+                type: resolution ? "video" : "image",
+                title: data.title,
+                duration: data.duration,
+                author: data.author,
+                thumbnail: data.thumbnail,
+                quality: getQualityScore(resolution)
+              });
+            }
+          }
         });
         
         // Sort by quality priority (HD first, then descending resolution)
@@ -434,22 +477,45 @@ export const snapsave = async (url: string): Promise<SnapSaveDownloaderResponse>
           const aText = cardBody.find("a").text().trim();
           let url = cardBody.find("a").attr("href");
           const type = aText.includes("Photo") ? "image" : "video";
-          // Remove duplicate dl parameters
-          if (url && url.includes("&dl=1&dl=1")) {
-            url = url.replace("&dl=1&dl=1", "&dl=1");
-          }
           
-                  cardItems.push({
-          url,
-          type,
-          title: data.title,
-          duration: data.duration,
-          author: data.author,
-          thumbnail: data.thumbnail,
-          quality: aText.includes("HD") || aText.includes("1080") ? 1000 : 
-                  aText.includes("720") ? 720 : 
-                  aText.includes("480") ? 480 : 360
-        });
+          // Handle different URL formats for Facebook
+          if (url) {
+            // Handle get_progressApi format
+            if (url.includes("get_progressApi")) {
+              const match = /get_progressApi\('(.*?)'\)/.exec(url);
+              if (match && match[1]) {
+                url = "https://snapsave.app" + match[1];
+              }
+            }
+            
+            // Handle onclick format
+            if (url.startsWith("javascript:")) {
+              const match = /window\.open\('([^']+)'/.exec(url);
+              if (match && match[1]) {
+                url = match[1];
+              }
+            }
+            
+            // Remove duplicate dl parameters
+            if (url.includes("&dl=1&dl=1")) {
+              url = url.replace("&dl=1&dl=1", "&dl=1");
+            }
+            
+            // Ensure URL is valid
+            if (url && url.startsWith("http")) {
+              cardItems.push({
+                url,
+                type,
+                title: data.title,
+                duration: data.duration,
+                author: data.author,
+                thumbnail: data.thumbnail,
+                quality: aText.includes("HD") || aText.includes("1080") ? 1000 : 
+                        aText.includes("720") ? 720 : 
+                        aText.includes("480") ? 480 : 360
+              });
+            }
+          }
         });
         
         // Sort by quality (HD first)
@@ -466,6 +532,30 @@ export const snapsave = async (url: string): Promise<SnapSaveDownloaderResponse>
         const aText = $("a").text().trim() || $("button").text().trim();
         const type = aText.includes("Photo") || aText.includes("photo") ? "image" : "video";
         
+        // Handle different URL formats for Facebook
+        if (url) {
+          // Handle get_progressApi format
+          if (url.includes("get_progressApi")) {
+            const match = /get_progressApi\('(.*?)'\)/.exec(url);
+            if (match && match[1]) {
+              url = "https://snapsave.app" + match[1];
+            }
+          }
+          
+          // Handle onclick format
+          if (url.startsWith("javascript:")) {
+            const match = /window\.open\('([^']+)'/.exec(url);
+            if (match && match[1]) {
+              url = match[1];
+            }
+          }
+          
+          // Remove duplicate dl parameters
+          if (url.includes("&dl=1&dl=1")) {
+            url = url.replace("&dl=1&dl=1", "&dl=1");
+          }
+        }
+        
         if (!url) {
           // Try to find any download link
           $("a").each((_, el) => {
@@ -477,10 +567,18 @@ export const snapsave = async (url: string): Promise<SnapSaveDownloaderResponse>
           });
         }
         
-        media.push({
-          url,
-          type
-        });
+        // Ensure URL is valid and add metadata
+        if (url && url.startsWith("http")) {
+          media.push({
+            url,
+            type,
+            title: data.title,
+            duration: data.duration,
+            author: data.author,
+            thumbnail: data.thumbnail,
+            quality: 500 // default quality
+          });
+        }
       }
     }
     else if ($("div.download-items").length) {
@@ -491,23 +589,46 @@ export const snapsave = async (url: string): Promise<SnapSaveDownloaderResponse>
         let url = itemBtn.find("a").attr("href");
         const spanText = itemBtn.find("span").text().trim();
         const type = spanText.includes("Photo") ? "image" : "video";
-        // Remove duplicate dl parameters
-        if (url && url.includes("&dl=1&dl=1")) {
-          url = url.replace("&dl=1&dl=1", "&dl=1");
-        }
         
-        downloadItems.push({
-          url,
-          ...type === "video" ? {
-            thumbnail: itemThumbnail ? fixThumbnail(itemThumbnail) : undefined
-          } : {},
-          type,
-          title: data.title,
-          duration: data.duration,
-          author: data.author,
-          quality: spanText.includes("HD") || url?.includes("hd") ? 1000 : 
-                  spanText.includes("720") ? 720 : 360
-        });
+        // Handle different URL formats for Facebook
+        if (url) {
+          // Handle get_progressApi format
+          if (url.includes("get_progressApi")) {
+            const match = /get_progressApi\('(.*?)'\)/.exec(url);
+            if (match && match[1]) {
+              url = "https://snapsave.app" + match[1];
+            }
+          }
+          
+          // Handle onclick format
+          if (url.startsWith("javascript:")) {
+            const match = /window\.open\('([^']+)'/.exec(url);
+            if (match && match[1]) {
+              url = match[1];
+            }
+          }
+          
+          // Remove duplicate dl parameters
+          if (url.includes("&dl=1&dl=1")) {
+            url = url.replace("&dl=1&dl=1", "&dl=1");
+          }
+          
+          // Ensure URL is valid
+          if (url && url.startsWith("http")) {
+            downloadItems.push({
+              url,
+              ...type === "video" ? {
+                thumbnail: itemThumbnail ? fixThumbnail(itemThumbnail) : undefined
+              } : {},
+              type,
+              title: data.title,
+              duration: data.duration,
+              author: data.author,
+              quality: spanText.includes("HD") || url?.includes("hd") ? 1000 : 
+                      spanText.includes("720") ? 720 : 360
+            });
+          }
+        }
       });
       
       // Sort by quality (HD first)  
@@ -517,7 +638,58 @@ export const snapsave = async (url: string): Promise<SnapSaveDownloaderResponse>
         media.push(mediaItem);
       });
     }
-    if (!media.length) return { success: false, message: "Blank data" };
+    if (!media.length) {
+      // Fallback: try to extract any download links from the page
+      const fallbackLinks: SnapSaveDownloaderMedia[] = [];
+      
+      $("a").each((_, el) => {
+        const href = $(el).attr("href");
+        const text = $(el).text().trim();
+        
+        if (href && (href.includes("download") || href.includes("snapsave") || href.includes("rapidcdn") || href.includes("get_progressApi"))) {
+          let cleanUrl = href;
+          
+          // Handle get_progressApi format
+          if (href.includes("get_progressApi")) {
+            const match = /get_progressApi\('(.*?)'\)/.exec(href);
+            if (match && match[1]) {
+              cleanUrl = "https://snapsave.app" + match[1];
+            }
+          }
+          
+          // Handle onclick format
+          if (href.startsWith("javascript:")) {
+            const match = /window\.open\('([^']+)'/.exec(href);
+            if (match && match[1]) {
+              cleanUrl = match[1];
+            }
+          }
+          
+          if (cleanUrl && cleanUrl.startsWith("http")) {
+            fallbackLinks.push({
+              url: cleanUrl,
+              type: text.includes("Photo") ? "image" : "video",
+              title: data.title,
+              duration: data.duration,
+              author: data.author,
+              thumbnail: data.thumbnail,
+              quality: 500
+            });
+          }
+        }
+      });
+      
+      if (fallbackLinks.length > 0) {
+        media.push(...fallbackLinks);
+      }
+    }
+    
+    if (!media.length) {
+      return { 
+        success: false, 
+        message: "No download links found. Facebook may have changed their structure or the video is not accessible." 
+      };
+    }
     
     const result = { success: true, data: { ...data, media } };
     
