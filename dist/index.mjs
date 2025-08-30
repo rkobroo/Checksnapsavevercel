@@ -2,6 +2,7 @@ const facebookRegex = /^https?:\/\/(?:www\.|web\.|m\.)?facebook\.com\/(watch(\?v
 const instagramRegex = /^https?:\/\/(?:www\.)?instagram\.com\/(?:p|reel|reels|tv|stories|share)\/([^/?#&]+).*/;
 const tiktokRegex = /^https?:\/\/(?:www\.|m\.|vm\.|vt\.)?tiktok\.com\/(?:@[^/]+\/(?:video|photo)\/\d+|v\/\d+|t\/[\w]+|[\w]+)\/?/;
 const twitterRegex = /^https:\/\/(?:x|twitter)\.com(?:\/(?:i\/web|[^/]+)\/status\/(\d+)(?:.*)?)?$/;
+const youtubeRegex = /^https?:\/\/(?:www\.|m\.)?youtube\.com\/(?:watch\?v=|embed\/|v\/|youtu\.be\/)([a-zA-Z0-9_-]{11})(?:\?.*)?$/;
 const userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36";
 const normalizeURL = (url) => {
   if (twitterRegex.test(url)) return url;
@@ -14,19 +15,22 @@ const fixThumbnail = (url) => {
 const generateCleanFilename = (title, type, extension) => {
   if (!title || title.trim().length === 0) {
     const timestamp = (/* @__PURE__ */ new Date()).toISOString().replace(/[:.]/g, "-").slice(0, 19);
-    return `video_${timestamp}.${type}`;
+    return `video_${timestamp}.${extension || type}`;
   }
   let cleanTitle = title.replace(/[<>:"/\\|?*]/g, "").replace(/[^\w\s\-_]/g, "").replace(/\s+/g, " ").trim().substring(0, 100);
   if (cleanTitle.length === 0) {
     const timestamp = (/* @__PURE__ */ new Date()).toISOString().replace(/[:.]/g, "-").slice(0, 19);
-    return `video_${timestamp}.${type}`;
+    return `video_${timestamp}.${extension || type}`;
+  }
+  if (extension) {
+    return `${cleanTitle}.${extension}`;
   }
   const defaultExtensions = {
     "video": "mp4",
     "image": "jpg",
     "zip": "zip"
   };
-  const ext = defaultExtensions[type];
+  const ext = defaultExtensions[type] || "mp4";
   return `${cleanTitle}.${ext}`;
 };
 const generateUniqueFilename = (title, type, extension) => {
@@ -70,6 +74,22 @@ const generateFilenameWithNumber = (title, type, number, extension) => {
   };
   const ext = defaultExtensions[type] || "mp4";
   return `${titleWithNumber}.${ext}`;
+};
+const generateUniquePhotoFilename = (baseTitle, index, quality, resolution, platform) => {
+  let photoTitle = baseTitle || "photo";
+  if (platform) {
+    photoTitle = `${platform}_${photoTitle}`;
+  }
+  if (quality && quality > 0) {
+    photoTitle = `${photoTitle}_${quality}p`;
+  }
+  if (resolution) {
+    photoTitle = `${photoTitle}_${resolution}`;
+  }
+  const timestamp = Date.now();
+  const randomString = Math.random().toString(36).substr(2, 6);
+  const uniqueTitle = `${photoTitle}_${index}_${timestamp}_${randomString}`;
+  return generateCleanFilename(uniqueTitle, "image", "jpg");
 };
 
 function decodeSnapApp(args) {
@@ -207,19 +227,34 @@ const downloadAllPhotos = async (url) => {
     if (!isInstagram) {
       photos = allMedia.filter((item) => item.type === "image" || item.type === "photo");
     }
-    const photoObjects = photos.map((item, index) => ({
-      url: item.url || "",
-      filename: generateFilenameWithNumber(
-        data.title || (isInstagram ? "instagram_photo" : "photo"),
-        "image",
-        index + 1,
-        "jpg"
-      ),
-      index: index + 1,
-      quality: item.quality || 500,
-      thumbnail: item.thumbnail || data.thumbnail || data.preview || "",
-      originalType: item.type || "unknown"
-    })).filter((photo) => photo.url && photo.url.startsWith("http"));
+    const photoObjects = photos.map((item, index) => {
+      let photoTitle = data.title || (isInstagram ? "instagram_photo" : "photo");
+      if (photos.length > 1) {
+        if (item.quality && item.quality > 0) {
+          photoTitle = `${photoTitle}_${item.quality}p`;
+        }
+        if (item.resolution) {
+          photoTitle = `${photoTitle}_${item.resolution}`;
+        }
+      }
+      return {
+        url: item.url || "",
+        filename: generateUniquePhotoFilename(
+          photoTitle,
+          index + 1,
+          item.quality,
+          item.resolution,
+          isInstagram ? "instagram" : "social"
+        ),
+        index: index + 1,
+        quality: item.quality || 500,
+        thumbnail: item.thumbnail || data.thumbnail || data.preview || "",
+        originalType: item.type || "unknown",
+        resolution: item.resolution || "",
+        // Add more unique identifiers
+        uniqueId: `${Date.now()}_${index}_${Math.random().toString(36).substr(2, 9)}`
+      };
+    }).filter((photo) => photo.url && photo.url.startsWith("http"));
     if (photoObjects.length === 0) {
       return {
         success: false,
@@ -318,6 +353,7 @@ function getPlatform(url) {
   if (url.includes("twitter") || url.includes("x.com")) return "Twitter/X";
   if (url.includes("facebook")) return "Facebook";
   if (url.includes("instagram")) return "Instagram";
+  if (url.includes("youtube") || url.includes("youtu.be")) return "YouTube";
   return "Unknown";
 }
 function getBestQualityMedia(media) {
@@ -496,11 +532,12 @@ const snapsave = async (url) => {
     if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
       return { success: true, data: cached.data };
     }
-    const regexList = [facebookRegex, instagramRegex, twitterRegex, tiktokRegex];
+    const regexList = [facebookRegex, instagramRegex, twitterRegex, tiktokRegex, youtubeRegex];
     const isValid = regexList.some((regex) => url.match(regex));
     if (!isValid) return { success: false, message: "Invalid URL" };
     const isTwitter = url.match(twitterRegex);
     const isTiktok = url.match(tiktokRegex);
+    const isYoutube = url.match(youtubeRegex);
     const formData = new URLSearchParams();
     formData.append("url", normalizeURL(url));
     if (isTiktok) {
@@ -608,6 +645,97 @@ const snapsave = async (url) => {
       };
       responseCache.set(cacheKey, { data: result2.data, timestamp: Date.now() });
       return result2;
+    }
+    if (isYoutube) {
+      try {
+        const response2 = await fetch("https://snapsave.app/", {
+          headers: {
+            "user-agent": userAgent
+          }
+        });
+        const homeHtml = await response2.text();
+        const load2 = await getCheerioLoad();
+        const $2 = load2(homeHtml);
+        const videoIdMatch = url.match(youtubeRegex);
+        const videoId = videoIdMatch ? videoIdMatch[1] : "";
+        if (!videoId) {
+          return { success: false, message: "Invalid YouTube URL" };
+        }
+        const youtubeFormData = new FormData();
+        youtubeFormData.append("url", url);
+        const downloadResponse = await fetch("https://snapsave.app/action.php", {
+          method: "POST",
+          headers: {
+            "user-agent": userAgent,
+            "accept": "*/*",
+            "content-type": "application/x-www-form-urlencoded",
+            "origin": "https://snapsave.app",
+            "referer": "https://snapsave.app/"
+          },
+          body: youtubeFormData
+        });
+        const downloadHtml = await downloadResponse.text();
+        const $download = load2(downloadHtml);
+        const youtubeLinks = [];
+        $download("a").each((_, el) => {
+          const href = $download(el).attr("href");
+          const text = $download(el).text().trim();
+          if (href && (href.includes("download") || href.includes("rapidcdn") || href.includes("snapsave"))) {
+            let quality = 0;
+            if (text.includes("4K") || text.includes("2160")) quality = 4e3;
+            else if (text.includes("2K") || text.includes("1440")) quality = 2e3;
+            else if (text.includes("1080") || text.includes("HD") || text.includes("Full HD")) quality = 1080;
+            else if (text.includes("720") || text.includes("HD")) quality = 720;
+            else if (text.includes("480")) quality = 480;
+            else if (text.includes("360")) quality = 360;
+            else quality = 500;
+            youtubeLinks.push({
+              url: href,
+              quality,
+              text,
+              type: "video"
+            });
+          }
+        });
+        youtubeLinks.sort((a, b) => b.quality - a.quality);
+        if (youtubeLinks.length === 0) {
+          return { success: false, message: "No YouTube download links found" };
+        }
+        const bestYoutubeLink = youtubeLinks[0];
+        const _url = bestYoutubeLink.url;
+        const title = $download("h1").first().text().trim() || $download("title").text().trim() || `YouTube Video ${videoId}`;
+        const description = $download("meta[name='description']").attr("content") || $download("p").first().text().trim() || "YouTube video download";
+        const author = $download("meta[name='author']").attr("content") || $download(".author").text().trim() || "YouTube Creator";
+        const preview = $download("img[src*='ytimg']").first().attr("src") || $download("img").first().attr("src") || `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`;
+        const result2 = {
+          success: true,
+          data: {
+            title: extractCleanTitle(title, "youtube"),
+            description: description.replace(/\s+/g, " ").trim(),
+            preview,
+            duration: "",
+            author: extractAuthor(author),
+            thumbnail: preview,
+            media: [{
+              url: _url,
+              type: "video",
+              title: extractCleanTitle(title, "youtube"),
+              duration: "",
+              author: extractAuthor(author),
+              thumbnail: preview,
+              quality: bestYoutubeLink.quality,
+              qualityLabel: getQualityLabel(bestYoutubeLink.quality)
+            }]
+          }
+        };
+        responseCache.set(cacheKey, { data: result2.data, timestamp: Date.now() });
+        return result2;
+      } catch (error) {
+        return {
+          success: false,
+          message: `YouTube download failed: ${error instanceof Error ? error.message : "Unknown error"}`
+        };
+      }
     }
     if (isTwitter) {
       const response2 = await fetch("https://twitterdownloader.snapsave.app/", {

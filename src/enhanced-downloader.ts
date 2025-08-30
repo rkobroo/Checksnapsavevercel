@@ -1,5 +1,5 @@
 import { snapsave } from "./index";
-import { generateCleanFilename, generateUniqueFilename, generateFilenameWithNumber } from "./utils";
+import { generateCleanFilename, generateUniqueFilename, generateFilenameWithNumber, generateUniquePhotoFilename } from "./utils";
 import type { SnapSaveDownloaderResponse, SnapSaveDownloaderMedia } from "./types";
 
 export interface EnhancedDownloadResponse {
@@ -162,21 +162,41 @@ export const downloadAllPhotos = async (url: string): Promise<{
     }
     
     // Map to photo objects with enhanced information
-    // Each photo gets a unique filename with a custom number to prevent conflicts
+    // Each photo gets a unique filename with enhanced uniqueness
     const photoObjects = photos
-      .map((item, index) => ({
-        url: item.url || '',
-        filename: generateFilenameWithNumber(
-          data.title || (isInstagram ? 'instagram_photo' : 'photo'),
-          'image',
-          index + 1,
-          'jpg'
-        ),
-        index: index + 1,
-        quality: item.quality || 500,
-        thumbnail: item.thumbnail || data.thumbnail || data.preview || '',
-        originalType: item.type || 'unknown'
-      }))
+      .map((item, index) => {
+        // Create more unique names for each photo
+        let photoTitle = data.title || (isInstagram ? 'instagram_photo' : 'photo');
+        
+        // If we have multiple photos, make each name more unique
+        if (photos.length > 1) {
+          // Add photo-specific information to make names unique
+          if (item.quality && item.quality > 0) {
+            photoTitle = `${photoTitle}_${item.quality}p`;
+          }
+          if (item.resolution) {
+            photoTitle = `${photoTitle}_${item.resolution}`;
+          }
+        }
+        
+        return {
+          url: item.url || '',
+          filename: generateUniquePhotoFilename(
+            photoTitle,
+            index + 1,
+            item.quality,
+            item.resolution,
+            isInstagram ? 'instagram' : 'social'
+          ),
+          index: index + 1,
+          quality: item.quality || 500,
+          thumbnail: item.thumbnail || data.thumbnail || data.preview || '',
+          originalType: item.type || 'unknown',
+          resolution: item.resolution || '',
+          // Add more unique identifiers
+          uniqueId: `${Date.now()}_${index}_${Math.random().toString(36).substr(2, 9)}`
+        };
+      })
       .filter(photo => photo.url && photo.url.startsWith('http'));
     
     if (photoObjects.length === 0) {
@@ -329,6 +349,7 @@ function getPlatform(url: string): string {
   if (url.includes('twitter') || url.includes('x.com')) return 'Twitter/X';
   if (url.includes('facebook')) return 'Facebook';
   if (url.includes('instagram')) return 'Instagram';
+  if (url.includes('youtube') || url.includes('youtu.be')) return 'YouTube';
   return 'Unknown';
 }
 
