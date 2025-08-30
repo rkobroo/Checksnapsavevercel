@@ -43,13 +43,41 @@ export const enhancedDownload = async (url: string): Promise<EnhancedDownloadRes
     
     const { data } = result;
     
-    // Get the best quality media item
+    // Get the best quality media item (prioritizing downloadable over service)
     const bestMedia = getBestQualityMedia(data.media || []);
     
     if (!bestMedia || !bestMedia.url) {
       return { success: false, message: "No download links found" };
     }
     
+    // Check if the best media is a service type (redirect to external site)
+    if (bestMedia.type === 'service') {
+      return {
+        success: true,
+        data: {
+          title: data.title || bestMedia.title || `${platform} Media`,
+          description: data.description || `This is a ${platform} download service. Visit the provided URL to download your content.`,
+          duration: data.duration || bestMedia.duration || "",
+          author: data.author || bestMedia.author || "",
+          thumbnail: data.thumbnail || bestMedia.thumbnail || data.preview || "",
+          preview: data.preview || "",
+          downloadUrl: bestMedia.url,
+          type: "service", // Mark as service type
+          quality: bestMedia.quality || 0,
+          qualityLabel: bestMedia.qualityLabel || getQualityLabel(bestMedia.quality || 0),
+          filename: `${data.title || platform}_service_link.txt`,
+          platform,
+          // Include the full media array for multiple download options
+          media: data.media || [],
+          // Add service information
+          isService: true,
+          serviceUrl: bestMedia.url,
+          serviceName: bestMedia.title || "Download Service"
+        }
+      };
+    }
+    
+    // For downloadable media (video/image), proceed with normal download logic
     // Ensure we have the highest quality available
     const allMedia = data.media || [];
     const highestQuality = allMedia.reduce((best, current) => {
@@ -79,7 +107,9 @@ export const enhancedDownload = async (url: string): Promise<EnhancedDownloadRes
         filename,
         platform,
         // Include the full media array for multiple download options
-        media: data.media || []
+        media: data.media || [],
+        // Mark as downloadable
+        isService: false
       }
     };
   } catch (error) {
@@ -358,11 +388,41 @@ function getPlatform(url: string): string {
 
 /**
  * Get the best quality media item
+ * Prioritizes downloadable media over service redirects
  */
 function getBestQualityMedia(media: SnapSaveDownloaderMedia[]): SnapSaveDownloaderMedia | null {
   if (!media.length) return null;
   
-  // Sort by quality (highest first)
+  // First, separate downloadable media from service redirects
+  const downloadableMedia = media.filter(item => 
+    item.type === 'video' || item.type === 'image'
+  );
+  
+  const serviceMedia = media.filter(item => 
+    item.type === 'service'
+  );
+  
+  // If we have downloadable media, prioritize that
+  if (downloadableMedia.length > 0) {
+    // Sort downloadable media by quality (highest first)
+    const sortedDownloadable = downloadableMedia.sort((a, b) => (b.quality || 0) - (a.quality || 0));
+    
+    // Prefer video over image if available
+    const videoItem = sortedDownloadable.find(item => item.type === 'video');
+    if (videoItem) return videoItem;
+    
+    // Return best quality downloadable item
+    return sortedDownloadable[0];
+  }
+  
+  // If no downloadable media, fall back to service media
+  if (serviceMedia.length > 0) {
+    // Sort service media by quality (highest first)
+    const sortedService = serviceMedia.sort((a, b) => (b.quality || 0) - (a.quality || 0));
+    return sortedService[0];
+  }
+  
+  // Fallback to original logic if no clear separation
   const sortedMedia = [...media].sort((a, b) => (b.quality || 0) - (a.quality || 0));
   
   // Prefer video over image if available

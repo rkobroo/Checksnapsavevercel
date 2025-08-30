@@ -175,6 +175,32 @@ const enhancedDownload = async (url) => {
     if (!bestMedia || !bestMedia.url) {
       return { success: false, message: "No download links found" };
     }
+    if (bestMedia.type === "service") {
+      return {
+        success: true,
+        data: {
+          title: data.title || bestMedia.title || `${platform} Media`,
+          description: data.description || `This is a ${platform} download service. Visit the provided URL to download your content.`,
+          duration: data.duration || bestMedia.duration || "",
+          author: data.author || bestMedia.author || "",
+          thumbnail: data.thumbnail || bestMedia.thumbnail || data.preview || "",
+          preview: data.preview || "",
+          downloadUrl: bestMedia.url,
+          type: "service",
+          // Mark as service type
+          quality: bestMedia.quality || 0,
+          qualityLabel: bestMedia.qualityLabel || getQualityLabel(bestMedia.quality || 0),
+          filename: `${data.title || platform}_service_link.txt`,
+          platform,
+          // Include the full media array for multiple download options
+          media: data.media || [],
+          // Add service information
+          isService: true,
+          serviceUrl: bestMedia.url,
+          serviceName: bestMedia.title || "Download Service"
+        }
+      };
+    }
     const allMedia = data.media || [];
     const highestQuality = allMedia.reduce((best, current) => {
       return (current.quality || 0) > (best.quality || 0) ? current : best;
@@ -199,7 +225,9 @@ const enhancedDownload = async (url) => {
         filename,
         platform,
         // Include the full media array for multiple download options
-        media: data.media || []
+        media: data.media || [],
+        // Mark as downloadable
+        isService: false
       }
     };
   } catch (error) {
@@ -374,6 +402,22 @@ function getPlatform(url) {
 }
 function getBestQualityMedia(media) {
   if (!media.length) return null;
+  const downloadableMedia = media.filter(
+    (item) => item.type === "video" || item.type === "image"
+  );
+  const serviceMedia = media.filter(
+    (item) => item.type === "service"
+  );
+  if (downloadableMedia.length > 0) {
+    const sortedDownloadable = downloadableMedia.sort((a, b) => (b.quality || 0) - (a.quality || 0));
+    const videoItem2 = sortedDownloadable.find((item) => item.type === "video");
+    if (videoItem2) return videoItem2;
+    return sortedDownloadable[0];
+  }
+  if (serviceMedia.length > 0) {
+    const sortedService = serviceMedia.sort((a, b) => (b.quality || 0) - (a.quality || 0));
+    return sortedService[0];
+  }
   const sortedMedia = [...media].sort((a, b) => (b.quality || 0) - (a.quality || 0));
   const videoItem = sortedMedia.find((item) => item.type === "video");
   if (videoItem) return videoItem;

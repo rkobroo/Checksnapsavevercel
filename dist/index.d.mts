@@ -2,7 +2,7 @@ interface SnapSaveDownloaderMedia {
     resolution?: string;
     shouldRender?: boolean;
     thumbnail?: string;
-    type?: "image" | "video";
+    type?: "image" | "video" | "service";
     url?: string;
     title?: string;
     duration?: string;
