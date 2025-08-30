@@ -166,6 +166,78 @@ function decryptSnaptik(data) {
 const enhancedDownload = async (url) => {
   try {
     const platform = getPlatform(url);
+    if (platform === "YouTube") {
+      const { getYouTubeVideoInfo } = await Promise.resolve().then(function () { return youtubeDownloader; });
+      const videoInfo = await getYouTubeVideoInfo(url);
+      if (videoInfo.success && videoInfo.data) {
+        const { videoInfo: info, downloadLinks, bestQuality, thumbnail } = videoInfo.data;
+        const media = [
+          // 720p Quality Option
+          {
+            url: `https://www.youtube.com/watch?v=${info.videoId}`,
+            type: "video",
+            title: `${info.title} - 720p HD Quality`,
+            duration: info.duration,
+            author: info.author,
+            thumbnail,
+            quality: 720,
+            qualityLabel: "720p HD",
+            resolution: "1280x720",
+            mimeType: "video/mp4"
+          },
+          // 480p Quality Option
+          {
+            url: `https://www.youtube.com/embed/${info.videoId}`,
+            type: "video",
+            title: `${info.title} - 480p Standard Quality`,
+            duration: info.duration,
+            author: info.author,
+            thumbnail,
+            quality: 480,
+            qualityLabel: "480p Standard",
+            resolution: "854x480",
+            mimeType: "video/mp4"
+          },
+          // High Quality Thumbnail
+          {
+            url: `https://img.youtube.com/vi/${info.videoId}/maxresdefault.jpg`,
+            type: "image",
+            title: `${info.title} - High Quality Thumbnail`,
+            duration: info.duration,
+            author: info.author,
+            thumbnail,
+            quality: 1080,
+            qualityLabel: "Thumbnail (1080p)",
+            resolution: "1920x1080",
+            mimeType: "image/jpeg"
+          }
+        ];
+        return {
+          success: true,
+          data: {
+            title: info.title,
+            description: `YouTube video download - 2 quality options available: 720p HD and 480p Standard. Plus high-quality thumbnail.`,
+            preview: thumbnail,
+            duration: info.duration,
+            author: info.author,
+            thumbnail,
+            downloadUrl: media[0].url,
+            // Use 720p as default
+            type: "video",
+            quality: 720,
+            qualityLabel: "720p HD",
+            filename: `${info.title}_720p_HD.mp4`,
+            platform: "YouTube",
+            media
+          }
+        };
+      } else {
+        return {
+          success: false,
+          message: videoInfo.message || "YouTube video information extraction failed"
+        };
+      }
+    }
     const result = await snapsave(url);
     if (!result.success || !result.data) {
       return { success: false, message: result.message || "Download failed" };
@@ -221,19 +293,19 @@ const enhancedDownload = async (url) => {
         downloadUrl: highestQuality.url || bestMedia.url,
         type: highestQuality.type || bestMedia.type || "video",
         quality: highestQuality.quality || bestMedia.quality || 0,
-        qualityLabel: highestQuality.qualityLabel || getQualityLabel(highestQuality.quality || bestMedia.quality || 0),
+        qualityLabel: bestMedia.qualityLabel || getQualityLabel(highestQuality.quality || bestMedia.quality || 0),
         filename,
         platform,
         // Include the full media array for multiple download options
         media: data.media || [],
-        // Mark as downloadable
+        // Add service information
         isService: false
       }
     };
   } catch (error) {
     return {
       success: false,
-      message: error instanceof Error ? error.message : "Download failed"
+      message: `Enhanced download failed: ${error instanceof Error ? error.message : "Unknown error"}`
     };
   }
 };
