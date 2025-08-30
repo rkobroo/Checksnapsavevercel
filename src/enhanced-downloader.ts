@@ -77,7 +77,9 @@ export const enhancedDownload = async (url: string): Promise<EnhancedDownloadRes
         quality: highestQuality.quality || bestMedia.quality || 0,
         qualityLabel: highestQuality.qualityLabel || getQualityLabel(highestQuality.quality || bestMedia.quality || 0),
         filename,
-        platform
+        platform,
+        // Include the full media array for multiple download options
+        media: data.media || []
       }
     };
   } catch (error) {
