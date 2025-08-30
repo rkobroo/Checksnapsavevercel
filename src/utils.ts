@@ -16,14 +16,25 @@ export const fixThumbnail = (url: string) => {
 };
 
 export const generateCleanFilename = (title: string, type: string, extension?: string): string => {
-  if (!title) return `download.${extension || type}`;
+  if (!title || title.trim().length === 0) {
+    // Generate a timestamp-based filename if no title
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    return `video_${timestamp}.${extension || type}`;
+  }
   
   // Remove invalid filename characters and clean up
   let cleanTitle = title
     .replace(/[<>:"/\\|?*]/g, '') // Remove invalid characters
+    .replace(/[^\w\s\-_]/g, '') // Remove special characters except spaces, hyphens, underscores
     .replace(/\s+/g, ' ') // Normalize whitespace
     .trim()
     .substring(0, 100); // Limit length
+  
+  // Ensure the title is not empty after cleaning
+  if (cleanTitle.length === 0) {
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    return `video_${timestamp}.${extension || type}`;
+  }
   
   // Add extension if provided
   if (extension) {

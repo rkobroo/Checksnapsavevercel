@@ -9,6 +9,7 @@ export interface SnapSaveDownloaderMedia {
   author?: string;
   description?: string;
   quality?: number;
+  qualityLabel?: string;
 }
 
 export interface SnapSaveDownloaderData {

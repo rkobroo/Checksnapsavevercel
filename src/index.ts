@@ -53,15 +53,64 @@ function extractAuthor(text: string): string {
   return authorMatch ? authorMatch[1].trim() : "";
 }
 
-// Helper function to get quality score from resolution
+// Enhanced quality scoring system - always prioritize highest quality
 function getQualityScore(resolution: string): number {
   if (!resolution) return 0;
-  if (resolution.includes("1080") || resolution.includes("HD")) return 1000;
-  if (resolution.includes("720")) return 720;
-  if (resolution.includes("480")) return 480;
-  if (resolution.includes("360")) return 360;
-  const match = resolution.match(/(\d+)p/);
-  return match ? parseInt(match[1]) : 500; // default quality
+  
+  // Convert to lowercase for consistent matching
+  const res = resolution.toLowerCase();
+  
+  // Ultra HD and 4K formats (highest priority)
+  if (res.includes("4k") || res.includes("2160") || res.includes("uhd")) return 4000;
+  if (res.includes("2k") || res.includes("1440")) return 2000;
+  
+  // Full HD formats
+  if (res.includes("1080") || res.includes("hd") || res.includes("fullhd") || res.includes("fhd")) return 1080;
+  if (res.includes("720") || res.includes("hd")) return 720;
+  
+  // Standard definition
+  if (res.includes("480") || res.includes("sd")) return 480;
+  if (res.includes("360")) return 360;
+  if (res.includes("240")) return 240;
+  
+  // Extract numeric resolution from patterns like "1920x1080" or "1080p"
+  const pixelMatch = res.match(/(\d+)[x×](\d+)/);
+  if (pixelMatch) {
+    const height = parseInt(pixelMatch[2]);
+    if (height >= 2160) return 4000; // 4K
+    if (height >= 1440) return 2000; // 2K
+    if (height >= 1080) return 1080; // Full HD
+    if (height >= 720) return 720;   // HD
+    if (height >= 480) return 480;   // SD
+    if (height >= 360) return 360;   // Low
+    return height; // Use height as quality score
+  }
+  
+  // Extract from "1080p" format
+  const pMatch = res.match(/(\d+)p/);
+  if (pMatch) {
+    const height = parseInt(pMatch[1]);
+    return height;
+  }
+  
+  // Default quality based on text indicators
+  if (res.includes("high") || res.includes("best") || res.includes("original")) return 1000;
+  if (res.includes("medium") || res.includes("normal")) return 500;
+  if (res.includes("low") || res.includes("worst")) return 100;
+  
+  return 500; // Default quality
+}
+
+// Helper function to get human-readable quality label
+function getQualityLabel(quality: number): string {
+  if (quality >= 4000) return "4K Ultra HD";
+  if (quality >= 2000) return "2K HD";
+  if (quality >= 1080) return "Full HD (1080p)";
+  if (quality >= 720) return "HD (720p)";
+  if (quality >= 480) return "SD (480p)";
+  if (quality >= 360) return "Low (360p)";
+  if (quality >= 240) return "Very Low (240p)";
+  return "Standard";
 }
 import { facebookRegex, fixThumbnail, instagramRegex, normalizeURL, tiktokRegex, twitterRegex, userAgent } from "./utils";
 import type { SnapSaveDownloaderData, SnapSaveDownloaderMedia, SnapSaveDownloaderResponse } from "./types";
@@ -154,6 +203,16 @@ export const snapsave = async (url: string): Promise<SnapSaveDownloaderResponse>
       let _url = bestLink?.url;
       const type = bestLink?.type || "video";
       
+      // Ensure we always get the highest quality available
+      if (bestLink && bestLink.quality < 1000) {
+        // Look for higher quality alternatives
+        const hdLink = downloadLinks.find(link => link.quality >= 1000);
+        if (hdLink) {
+          _url = hdLink.url;
+          bestLink.quality = hdLink.quality;
+        }
+      }
+      
       // Enhanced metadata extraction for TikTok
       let description = $3(".video-title").text().trim() ||
                        $3(".video-des").text().trim() ||
@@ -213,7 +272,8 @@ export const snapsave = async (url: string): Promise<SnapSaveDownloaderResponse>
             duration,
             author,
             thumbnail: preview,
-            quality: bestLink?.quality || 0
+            quality: bestLink?.quality || 0,
+            qualityLabel: getQualityLabel(bestLink?.quality || 0)
           }] 
         } 
       };
@@ -285,6 +345,16 @@ export const snapsave = async (url: string): Promise<SnapSaveDownloaderResponse>
       let _url = bestTwitterLink?.url;
       const type = bestTwitterLink?.type || "video";
       
+      // Ensure we always get the highest quality available
+      if (bestTwitterLink && bestTwitterLink.quality < 1000) {
+        // Look for higher quality alternatives
+        const hdLink = twitterLinks.find(link => link.quality >= 1000);
+        if (hdLink) {
+          _url = hdLink.url;
+          bestTwitterLink.quality = hdLink.quality;
+        }
+      }
+      
       // Enhanced metadata extraction for Twitter/X
       let description = $2(".videotikmate-middle > p > span").text().trim() ||
                        $2(".video-title").text().trim() ||
@@ -328,7 +398,8 @@ export const snapsave = async (url: string): Promise<SnapSaveDownloaderResponse>
             duration,
             author,
             thumbnail: preview,
-            quality: bestTwitterLink?.quality || 0
+            quality: bestTwitterLink?.quality || 0,
+            qualityLabel: getQualityLabel(bestTwitterLink?.quality || 0)
           }] 
         } 
       };
@@ -463,12 +534,22 @@ export const snapsave = async (url: string): Promise<SnapSaveDownloaderResponse>
           }
         });
         
-        // Sort by quality priority (HD first, then descending resolution)
+        // Sort by quality priority (highest first)
         mediaItems.sort((a, b) => {
           return (b.quality || 0) - (a.quality || 0);
         });
         
-        media.push(...mediaItems);
+        // Only add the highest quality media to prevent duplicates
+        if (mediaItems.length > 0) {
+          const bestQuality = mediaItems[0];
+          media.push({
+            ...bestQuality,
+            // Ensure we have the best quality indicator
+            quality: bestQuality.quality || 0,
+            // Add quality label for user information
+            qualityLabel: getQualityLabel(bestQuality.quality || 0)
+          });
+        }
       }
       else if ($("div.card").length) {
         const cardItems: any[] = [];
@@ -518,12 +599,18 @@ export const snapsave = async (url: string): Promise<SnapSaveDownloaderResponse>
           }
         });
         
-        // Sort by quality (HD first)
+        // Sort by quality (highest first)
         cardItems.sort((a, b) => b.quality - a.quality);
-        cardItems.forEach(item => {
-          const { quality, ...mediaItem } = item;
-          media.push(mediaItem);
-        });
+        
+        // Only add the highest quality media
+        if (cardItems.length > 0) {
+          const bestQuality = cardItems[0];
+          media.push({
+            ...bestQuality,
+            quality: bestQuality.quality || 0,
+            qualityLabel: getQualityLabel(bestQuality.quality || 0)
+          });
+        }
       }
       else {
         let url = $("a[href*='download']").attr("href") || 
@@ -631,12 +718,18 @@ export const snapsave = async (url: string): Promise<SnapSaveDownloaderResponse>
         }
       });
       
-      // Sort by quality (HD first)  
-      downloadItems.sort((a, b) => b.quality - a.quality);
-      downloadItems.forEach(item => {
-        const { quality, ...mediaItem } = item;
-        media.push(mediaItem);
-      });
+              // Sort by quality (highest first)  
+        downloadItems.sort((a, b) => b.quality - a.quality);
+        
+        // Only add the highest quality media
+        if (downloadItems.length > 0) {
+          const bestQuality = downloadItems[0];
+          media.push({
+            ...bestQuality,
+            quality: bestQuality.quality || 0,
+            qualityLabel: getQualityLabel(bestQuality.quality || 0)
+          });
+        }
     }
     if (!media.length) {
       // Fallback: try to extract any download links from the page
@@ -680,7 +773,14 @@ export const snapsave = async (url: string): Promise<SnapSaveDownloaderResponse>
       });
       
       if (fallbackLinks.length > 0) {
-        media.push(...fallbackLinks);
+        // Sort fallback links by quality and only add the best
+        fallbackLinks.sort((a, b) => (b.quality || 0) - (a.quality || 0));
+        const bestFallback = fallbackLinks[0];
+        media.push({
+          ...bestFallback,
+          quality: bestFallback.quality || 0,
+          qualityLabel: getQualityLabel(bestFallback.quality || 0)
+        });
       }
     }
     

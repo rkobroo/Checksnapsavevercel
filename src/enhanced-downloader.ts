@@ -50,10 +50,16 @@ export const enhancedDownload = async (url: string): Promise<EnhancedDownloadRes
       return { success: false, message: "No download links found" };
     }
     
-    // Generate clean filename using video title
+    // Ensure we have the highest quality available
+    const allMedia = data.media || [];
+    const highestQuality = allMedia.reduce((best, current) => {
+      return (current.quality || 0) > (best.quality || 0) ? current : best;
+    }, bestMedia);
+    
+    // Generate clean filename using video title (always prioritize title)
     const filename = generateCleanFilename(
-      data.title || bestMedia.title || "video",
-      bestMedia.type || "video"
+      data.title || bestMedia.title || highestQuality.title || "video",
+      highestQuality.type || bestMedia.type || "video"
     );
     
     return {
