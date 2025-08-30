@@ -2,6 +2,7 @@ export const facebookRegex = /^https?:\/\/(?:www\.|web\.|m\.)?facebook\.com\/(wa
 export const instagramRegex = /^https?:\/\/(?:www\.)?instagram\.com\/(?:p|reel|reels|tv|stories|share)\/([^/?#&]+).*/;
 export const tiktokRegex = /^https?:\/\/(?:www\.|m\.|vm\.|vt\.)?tiktok\.com\/(?:@[^/]+\/(?:video|photo)\/\d+|v\/\d+|t\/[\w]+|[\w]+)\/?/;
 export const twitterRegex = /^https:\/\/(?:x|twitter)\.com(?:\/(?:i\/web|[^/]+)\/status\/(\d+)(?:.*)?)?$/;
+export const youtubeRegex = /^https?:\/\/(?:www\.|m\.)?youtube\.com\/(?:watch\?v=|embed\/|v\/|youtu\.be\/)([a-zA-Z0-9_-]{11})(?:\?.*)?$/;
 
 export const userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36";
 
@@ -158,6 +159,48 @@ export const generatePhotoDownloadLinks = (photos: Array<{
     // Add direct download attribute for browser download
     downloadAttribute: `download="${photo.filename}"`
   }));
+};
+
+/**
+ * Generate unique filename for photos with enhanced uniqueness
+ * Perfect for photo collections where each photo needs a distinct name
+ */
+export const generateUniquePhotoFilename = (
+  baseTitle: string, 
+  index: number, 
+  quality?: number, 
+  resolution?: string,
+  platform?: string
+): string => {
+  // Start with base title
+  let photoTitle = baseTitle || 'photo';
+  
+  // Add platform identifier if available
+  if (platform) {
+    photoTitle = `${platform}_${photoTitle}`;
+  }
+  
+  // Add quality information if available
+  if (quality && quality > 0) {
+    photoTitle = `${photoTitle}_${quality}p`;
+  }
+  
+  // Add resolution if available
+  if (resolution) {
+    photoTitle = `${photoTitle}_${resolution}`;
+  }
+  
+  // Add timestamp for extra uniqueness
+  const timestamp = Date.now();
+  
+  // Add random string for maximum uniqueness
+  const randomString = Math.random().toString(36).substr(2, 6);
+  
+  // Combine all elements for maximum uniqueness
+  const uniqueTitle = `${photoTitle}_${index}_${timestamp}_${randomString}`;
+  
+  // Clean the title and add extension
+  return generateCleanFilename(uniqueTitle, 'image', 'jpg');
 };
 
 /**

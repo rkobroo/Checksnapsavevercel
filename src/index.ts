@@ -112,7 +112,7 @@ function getQualityLabel(quality: number): string {
   if (quality >= 240) return "Very Low (240p)";
   return "Standard";
 }
-import { facebookRegex, fixThumbnail, instagramRegex, normalizeURL, tiktokRegex, twitterRegex, userAgent } from "./utils";
+import { facebookRegex, fixThumbnail, instagramRegex, normalizeURL, tiktokRegex, twitterRegex, youtubeRegex, userAgent } from "./utils";
 import type { SnapSaveDownloaderData, SnapSaveDownloaderMedia, SnapSaveDownloaderResponse } from "./types";
 import { decryptSnapSave, decryptSnaptik } from "./decrypter";
 
@@ -135,11 +135,12 @@ export const snapsave = async (url: string): Promise<SnapSaveDownloaderResponse>
       return { success: true, data: cached.data };
     }
 
-    const regexList = [facebookRegex, instagramRegex, twitterRegex, tiktokRegex];
+    const regexList = [facebookRegex, instagramRegex, twitterRegex, tiktokRegex, youtubeRegex];
     const isValid = regexList.some(regex => url.match(regex));
     if (!isValid) return { success: false, message: "Invalid URL" };
     const isTwitter = url.match(twitterRegex);
     const isTiktok = url.match(tiktokRegex);
+    const isYoutube = url.match(youtubeRegex);
 
     const formData = new URLSearchParams();
     formData.append("url", normalizeURL(url));
@@ -289,6 +290,133 @@ export const snapsave = async (url: string): Promise<SnapSaveDownloaderResponse>
       responseCache.set(cacheKey, { data: result.data, timestamp: Date.now() });
       
       return result;
+    }
+    if (isYoutube) {
+      // YouTube video download handling
+      try {
+        const response = await fetch("https://snapsave.app/", {
+          headers: {
+            "user-agent": userAgent,
+          }
+        });
+        
+        const homeHtml = await response.text();
+        const load = await getCheerioLoad();
+        const $ = load(homeHtml);
+        
+        // Extract YouTube video ID from URL
+        const videoIdMatch = url.match(youtubeRegex);
+        const videoId = videoIdMatch ? videoIdMatch[1] : '';
+        
+        if (!videoId) {
+          return { success: false, message: "Invalid YouTube URL" };
+        }
+        
+        // Create form data for YouTube download
+        const youtubeFormData = new FormData();
+        youtubeFormData.append("url", url);
+        
+        const downloadResponse = await fetch("https://snapsave.app/action.php", {
+          method: "POST",
+          headers: {
+            "user-agent": userAgent,
+            "accept": "*/*",
+            "content-type": "application/x-www-form-urlencoded",
+            "origin": "https://snapsave.app",
+            "referer": "https://snapsave.app/",
+          },
+          body: youtubeFormData
+        });
+        
+        const downloadHtml = await downloadResponse.text();
+        const $download = load(downloadHtml);
+        
+        // Extract YouTube download links
+        const youtubeLinks: any[] = [];
+        
+        $download("a").each((_, el) => {
+          const href = $download(el).attr("href");
+          const text = $download(el).text().trim();
+          
+          if (href && (href.includes("download") || href.includes("rapidcdn") || href.includes("snapsave"))) {
+            let quality = 0;
+            if (text.includes("4K") || text.includes("2160")) quality = 4000;
+            else if (text.includes("2K") || text.includes("1440")) quality = 2000;
+            else if (text.includes("1080") || text.includes("HD") || text.includes("Full HD")) quality = 1080;
+            else if (text.includes("720") || text.includes("HD")) quality = 720;
+            else if (text.includes("480")) quality = 480;
+            else if (text.includes("360")) quality = 360;
+            else quality = 500; // default
+            
+            youtubeLinks.push({
+              url: href,
+              quality,
+              text,
+              type: "video"
+            });
+          }
+        });
+        
+        // Sort by quality (highest first)
+        youtubeLinks.sort((a, b) => b.quality - a.quality);
+        
+        if (youtubeLinks.length === 0) {
+          return { success: false, message: "No YouTube download links found" };
+        }
+        
+        const bestYoutubeLink = youtubeLinks[0];
+        const _url = bestYoutubeLink.url;
+        
+        // Extract YouTube metadata
+        const title = $download("h1").first().text().trim() || 
+                     $download("title").text().trim() || 
+                     `YouTube Video ${videoId}`;
+        
+        const description = $download("meta[name='description']").attr("content") || 
+                           $download("p").first().text().trim() || 
+                           "YouTube video download";
+        
+        const author = $download("meta[name='author']").attr("content") || 
+                      $download(".author").text().trim() || 
+                      "YouTube Creator";
+        
+        const preview = $download("img[src*='ytimg']").first().attr("src") || 
+                       $download("img").first().attr("src") || 
+                       `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`;
+        
+        const result = { 
+          success: true, 
+          data: { 
+            title: extractCleanTitle(title, 'youtube'),
+            description: description.replace(/\s+/g, ' ').trim(),
+            preview, 
+            duration: "",
+            author: extractAuthor(author),
+            thumbnail: preview,
+            media: [{ 
+              url: _url, 
+              type: "video",
+              title: extractCleanTitle(title, 'youtube'),
+              duration: "",
+              author: extractAuthor(author),
+              thumbnail: preview,
+              quality: bestYoutubeLink.quality,
+              qualityLabel: getQualityLabel(bestYoutubeLink.quality)
+            }] 
+          } 
+        };
+        
+        // Cache the result for faster future responses
+        responseCache.set(cacheKey, { data: result.data, timestamp: Date.now() });
+        
+        return result;
+        
+      } catch (error) {
+        return { 
+          success: false, 
+          message: `YouTube download failed: ${error instanceof Error ? error.message : 'Unknown error'}` 
+        };
+      }
     }
     if (isTwitter) {
       const response = await fetch("https://twitterdownloader.snapsave.app/", {
