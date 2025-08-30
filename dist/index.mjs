@@ -801,7 +801,7 @@ const snapsave = async (url) => {
             success: true,
             data: {
               title: `YouTube Video ${videoId}`,
-              description: "YouTube video download - working video download options available with multiple quality choices",
+              description: "YouTube video download - working video download links available with multiple quality choices",
               preview: `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`,
               duration: "",
               author: "YouTube Creator",

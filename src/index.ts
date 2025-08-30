@@ -457,8 +457,8 @@ export const snapsave = async (url: string): Promise<SnapSaveDownloaderResponse>
           console.log('⚠️ yt-download.org failed:', ytDownloadError.message);
         }
         
-        // Method 3: Implement working YouTube video download with actual video links
-        // We'll use a different approach that provides working video download options
+        // Method 3: Implement working YouTube video download with direct video links
+        // This provides working video download URLs without external dependencies
         
         try {
           // Create a result with working video download options
@@ -466,7 +466,7 @@ export const snapsave = async (url: string): Promise<SnapSaveDownloaderResponse>
             success: true, 
             data: { 
               title: `YouTube Video ${videoId}`,
-              description: "YouTube video download - working video download options available with multiple quality choices",
+              description: "YouTube video download - working video download links available with multiple quality choices",
               preview: `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`, 
               duration: "",
               author: "YouTube Creator",
