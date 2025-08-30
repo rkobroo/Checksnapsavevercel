@@ -16,14 +16,25 @@ export const fixThumbnail = (url: string) => {
 };
 
 export const generateCleanFilename = (title: string, type: string, extension?: string): string => {
-  if (!title) return `download.${extension || type}`;
+  if (!title || title.trim().length === 0) {
+    // Generate a timestamp-based filename if no title
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    return `video_${timestamp}.${extension || type}`;
+  }
   
   // Remove invalid filename characters and clean up
   let cleanTitle = title
     .replace(/[<>:"/\\|?*]/g, '') // Remove invalid characters
+    .replace(/[^\w\s\-_]/g, '') // Remove special characters except spaces, hyphens, underscores
     .replace(/\s+/g, ' ') // Normalize whitespace
     .trim()
     .substring(0, 100); // Limit length
+  
+  // Ensure the title is not empty after cleaning
+  if (cleanTitle.length === 0) {
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    return `video_${timestamp}.${extension || type}`;
+  }
   
   // Add extension if provided
   if (extension) {
@@ -33,9 +44,47 @@ export const generateCleanFilename = (title: string, type: string, extension?: s
   // Default extensions based on type
   const defaultExtensions = {
     'video': 'mp4',
-    'image': 'jpg'
+    'image': 'jpg',
+    'zip': 'zip'
   };
   
   const ext = defaultExtensions[type as keyof typeof defaultExtensions] || 'mp4';
   return `${cleanTitle}.${ext}`;
+};
+
+/**
+ * Generate download links for all photos in one click
+ */
+export const generatePhotoDownloadLinks = (photos: Array<{
+  url: string;
+  filename: string;
+  index: number;
+  quality: number;
+  thumbnail: string;
+}>) => {
+  return photos.map(photo => ({
+    ...photo,
+    downloadLink: photo.url,
+    // Add direct download attribute for browser download
+    downloadAttribute: `download="${photo.filename}"`
+  }));
+};
+
+/**
+ * Generate bulk download instructions
+ */
+export const generateBulkDownloadInstructions = (totalPhotos: number, platform: string) => {
+  const instructions = [
+    `📸 Found ${totalPhotos} photos on ${platform}`,
+    `🚀 All photos are ready for download in one click!`,
+    `📁 Each photo will be saved with a unique filename`,
+    `💡 Tip: Use browser's "Save all" feature or download individually`
+  ];
+  
+  if (totalPhotos > 10) {
+    instructions.push(`⚠️ Large collection detected (${totalPhotos} photos)`);
+    instructions.push(`💾 Consider downloading in smaller batches for better performance`);
+  }
+  
+  return instructions;
 };
