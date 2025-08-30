@@ -801,13 +801,24 @@ const snapsave = async (url) => {
             success: true,
             data: {
               title: `YouTube Video ${videoId}`,
-              description: "YouTube video download - multiple download options available",
+              description: "YouTube video download - working download options available. For video files, use the provided working service.",
               preview: `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`,
               duration: "",
               author: "YouTube Creator",
               thumbnail: `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`,
               media: [
-                // Option 1: High-quality thumbnail (always works)
+                // Option 1: Working video download service (snapany.com)
+                {
+                  url: `https://snapany.com/youtube`,
+                  type: "service",
+                  title: `YouTube Video ${videoId} - Working Video Download Service`,
+                  duration: "",
+                  author: "YouTube Creator",
+                  thumbnail: `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`,
+                  quality: 1080,
+                  qualityLabel: "Video Download Service"
+                },
+                // Option 2: High-quality thumbnail (always works)
                 {
                   url: `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`,
                   type: "image",
@@ -818,7 +829,7 @@ const snapsave = async (url) => {
                   quality: 1080,
                   qualityLabel: "Thumbnail (1080p)"
                 },
-                // Option 2: Medium quality thumbnail
+                // Option 3: Medium quality thumbnail
                 {
                   url: `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`,
                   type: "image",
@@ -829,7 +840,7 @@ const snapsave = async (url) => {
                   quality: 720,
                   qualityLabel: "Thumbnail (720p)"
                 },
-                // Option 3: Standard quality thumbnail
+                // Option 4: Standard quality thumbnail
                 {
                   url: `https://img.youtube.com/vi/${videoId}/sddefault.jpg`,
                   type: "image",
@@ -839,17 +850,6 @@ const snapsave = async (url) => {
                   thumbnail: `https://img.youtube.com/vi/${videoId}/sddefault.jpg`,
                   quality: 480,
                   qualityLabel: "Thumbnail (480p)"
-                },
-                // Option 4: Video info page (for users to get video details)
-                {
-                  url: `https://www.youtube.com/watch?v=${videoId}`,
-                  type: "info",
-                  title: `YouTube Video ${videoId} - Video Info Page`,
-                  duration: "",
-                  author: "YouTube Creator",
-                  thumbnail: `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`,
-                  quality: 0,
-                  qualityLabel: "Info Page"
                 }
               ]
             }
