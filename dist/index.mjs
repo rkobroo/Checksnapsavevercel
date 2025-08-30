@@ -798,42 +798,21 @@ const snapsave = async (url) => {
           success: true,
           data: {
             title: `YouTube Video ${videoId}`,
-            description: "YouTube video download - direct download links available",
+            description: "YouTube video download - thumbnail image available for download. For video download, please visit the YouTube page and use browser extensions or external services.",
             preview: `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`,
             duration: "",
             author: "YouTube Creator",
             thumbnail: `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`,
             media: [
-              // High quality options
               {
-                url: `https://www.y2mate.com/download-youtube/${videoId}_1080p`,
-                type: "video",
-                title: `YouTube Video ${videoId} - 1080p`,
+                url: `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`,
+                type: "image",
+                title: `YouTube Video ${videoId} - Thumbnail`,
                 duration: "",
                 author: "YouTube Creator",
                 thumbnail: `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`,
                 quality: 1080,
                 qualityLabel: getQualityLabel$1(1080)
-              },
-              {
-                url: `https://www.y2mate.com/download-youtube/${videoId}_720p`,
-                type: "video",
-                title: `YouTube Video ${videoId} - 720p`,
-                duration: "",
-                author: "YouTube Creator",
-                thumbnail: `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`,
-                quality: 720,
-                qualityLabel: getQualityLabel$1(720)
-              },
-              {
-                url: `https://www.y2mate.com/download-youtube/${videoId}_480p`,
-                type: "video",
-                title: `YouTube Video ${videoId} - 480p`,
-                duration: "",
-                author: "YouTube Creator",
-                thumbnail: `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`,
-                quality: 480,
-                qualityLabel: getQualityLabel$1(480)
               }
             ]
           }
