@@ -1,5 +1,5 @@
 import { snapsave } from "./index";
-import { generateCleanFilename } from "./utils";
+import { generateCleanFilename, generateUniqueFilename, generateFilenameWithNumber } from "./utils";
 import type { SnapSaveDownloaderResponse, SnapSaveDownloaderMedia } from "./types";
 
 export interface EnhancedDownloadResponse {
@@ -56,8 +56,9 @@ export const enhancedDownload = async (url: string): Promise<EnhancedDownloadRes
       return (current.quality || 0) > (best.quality || 0) ? current : best;
     }, bestMedia);
     
-    // Generate clean filename using video title (always prioritize title)
-    const filename = generateCleanFilename(
+    // Generate unique filename with random number to prevent overwrites
+    // This ensures each download gets a unique name even for the same video
+    const filename = generateUniqueFilename(
       data.title || bestMedia.title || highestQuality.title || "video",
       highestQuality.type || bestMedia.type || "video"
     );
@@ -161,12 +162,14 @@ export const downloadAllPhotos = async (url: string): Promise<{
     }
     
     // Map to photo objects with enhanced information
+    // Each photo gets a unique filename with a custom number to prevent conflicts
     const photoObjects = photos
       .map((item, index) => ({
         url: item.url || '',
-        filename: generateCleanFilename(
-          `${data.title || (isInstagram ? 'instagram_photo' : 'photo')}_${index + 1}`,
+        filename: generateFilenameWithNumber(
+          data.title || (isInstagram ? 'instagram_photo' : 'photo'),
           'image',
+          index + 1,
           'jpg'
         ),
         index: index + 1,
@@ -248,14 +251,15 @@ export const downloadAllMedia = async (url: string): Promise<{
     const { data } = result;
     const allMedia = data.media || [];
     
-    // Separate photos and videos
+    // Separate photos and videos with unique filenames
     const photos = allMedia
       .filter(item => item.type === 'image' || item.type === 'photo')
       .map((item, index) => ({
         url: item.url || '',
-        filename: generateCleanFilename(
-          `${data.title || 'photo'}_${index + 1}`,
+        filename: generateFilenameWithNumber(
+          data.title || 'photo',
           'image',
+          index + 1,
           'jpg'
         ),
         index: index + 1,
@@ -267,9 +271,10 @@ export const downloadAllMedia = async (url: string): Promise<{
     const videos = allMedia
       .filter(item => item.type === 'video')
       .map((item, index) => {
-        const filename = generateCleanFilename(
-          `${data.title || 'video'}_${index + 1}`,
+        const filename = generateFilenameWithNumber(
+          data.title || 'video',
           'video',
+          index + 1,
           'mp4'
         );
         return {
@@ -343,6 +348,89 @@ function getBestQualityMedia(media: SnapSaveDownloaderMedia[]): SnapSaveDownload
   // Return best quality item
   return sortedMedia[0];
 }
+
+/**
+ * Download the same video/photo multiple times with unique filenames
+ * Perfect for when you want to download the same content multiple times
+ */
+export const downloadMultipleTimes = async (
+  url: string, 
+  count: number = 3
+): Promise<{
+  success: boolean;
+  message?: string;
+  data?: {
+    title: string;
+    description: string;
+    author: string;
+    thumbnail: string;
+    originalUrl: string;
+    downloads: Array<{
+      index: number;
+      filename: string;
+      downloadUrl: string;
+      quality: number;
+      qualityLabel: string;
+      type: string;
+    }>;
+  };
+}> => {
+  try {
+    if (count < 1 || count > 10) {
+      return { 
+        success: false, 
+        message: "Count must be between 1 and 10" 
+      };
+    }
+
+    // Get the original media data
+    const result = await enhancedDownload(url);
+    
+    if (!result.success || !result.data) {
+      return { success: false, message: result.message || "Download failed" };
+    }
+
+    const { data } = result;
+    const downloads = [];
+
+    // Generate multiple downloads with unique filenames
+    for (let i = 1; i <= count; i++) {
+      const filename = generateFilenameWithNumber(
+        data.title,
+        data.type,
+        i,
+        data.type === 'video' ? 'mp4' : 'jpg'
+      );
+
+      downloads.push({
+        index: i,
+        filename,
+        downloadUrl: data.downloadUrl,
+        quality: data.quality,
+        qualityLabel: data.qualityLabel || 'Standard',
+        type: data.type
+      });
+    }
+
+    return {
+      success: true,
+      data: {
+        title: data.title,
+        description: data.description,
+        author: data.author,
+        thumbnail: data.thumbnail,
+        originalUrl: url,
+        downloads
+      }
+    };
+
+  } catch (error) {
+    return { 
+      success: false, 
+      message: error instanceof Error ? error.message : "Multiple download failed" 
+    };
+  }
+};
 
 /**
  * Get download info without actually downloading (fast metadata response)

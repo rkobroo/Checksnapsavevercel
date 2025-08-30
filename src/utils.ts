@@ -53,6 +53,96 @@ export const generateCleanFilename = (title: string, type: string, extension?: s
 };
 
 /**
+ * Generate a unique filename with random number to prevent overwrites
+ * Perfect for downloading the same video/photo multiple times
+ */
+export const generateUniqueFilename = (title: string, type: string, extension?: string): string => {
+  // Generate a random 6-digit number
+  const randomNumber = Math.floor(100000 + Math.random() * 900000);
+  
+  if (!title || title.trim().length === 0) {
+    // Generate a timestamp-based filename with random number if no title
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    return `video_${timestamp}_${randomNumber}.${extension || type}`;
+  }
+  
+  // Remove invalid filename characters and clean up
+  let cleanTitle = title
+    .replace(/[<>:"/\\|?*]/g, '') // Remove invalid characters
+    .replace(/[^\w\s\-_]/g, '') // Remove special characters except spaces, hyphens, underscores
+    .replace(/\s+/g, ' ') // Normalize whitespace
+    .trim()
+    .substring(0, 80); // Limit length to leave room for random number
+  
+  // Ensure the title is not empty after cleaning
+  if (cleanTitle.length === 0) {
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    return `video_${timestamp}_${randomNumber}.${extension || type}`;
+  }
+  
+  // Add random number to title
+  const titleWithRandom = `${cleanTitle}_${randomNumber}`;
+  
+  // Add extension if provided
+  if (extension) {
+    return `${titleWithRandom}.${extension}`;
+  }
+  
+  // Default extensions based on type
+  const defaultExtensions = {
+    'video': 'mp4',
+    'image': 'jpg',
+    'zip': 'zip'
+  };
+  
+  const ext = defaultExtensions[type as keyof typeof defaultExtensions] || 'mp4';
+  return `${titleWithRandom}.${ext}`;
+};
+
+/**
+ * Generate a filename with custom random number (for batch operations)
+ */
+export const generateFilenameWithNumber = (title: string, type: string, number: number, extension?: string): string => {
+  if (!title || title.trim().length === 0) {
+    // Generate a timestamp-based filename with custom number if no title
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    return `video_${timestamp}_${number}.${extension || type}`;
+  }
+  
+  // Remove invalid filename characters and clean up
+  let cleanTitle = title
+    .replace(/[<>:"/\\|?*]/g, '') // Remove invalid characters
+    .replace(/[^\w\s\-_]/g, '') // Remove special characters except spaces, hyphens, underscores
+    .replace(/\s+/g, ' ') // Normalize whitespace
+    .trim()
+    .substring(0, 80); // Limit length to leave room for number
+  
+  // Ensure the title is not empty after cleaning
+  if (cleanTitle.length === 0) {
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    return `video_${timestamp}_${number}.${extension || type}`;
+  }
+  
+  // Add custom number to title
+  const titleWithNumber = `${cleanTitle}_${number}`;
+  
+  // Add extension if provided
+  if (extension) {
+    return `${titleWithNumber}.${extension}`;
+  }
+  
+  // Default extensions based on type
+  const defaultExtensions = {
+    'video': 'mp4',
+    'image': 'jpg',
+    'zip': 'zip'
+  };
+  
+  const ext = defaultExtensions[type as keyof typeof defaultExtensions] || 'mp4';
+  return `${titleWithNumber}.${ext}`;
+};
+
+/**
  * Generate download links for all photos in one click
  */
 export const generatePhotoDownloadLinks = (photos: Array<{
