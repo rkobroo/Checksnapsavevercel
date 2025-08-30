@@ -2,7 +2,20 @@ const facebookRegex = /^https?:\/\/(?:www\.|web\.|m\.)?facebook\.com\/(watch(\?v
 const instagramRegex = /^https?:\/\/(?:www\.)?instagram\.com\/(?:p|reel|reels|tv|stories|share)\/([^/?#&]+).*/;
 const tiktokRegex = /^https?:\/\/(?:www\.|m\.|vm\.|vt\.)?tiktok\.com\/(?:@[^/]+\/(?:video|photo)\/\d+|v\/\d+|t\/[\w]+|[\w]+)\/?/;
 const twitterRegex = /^https:\/\/(?:x|twitter)\.com(?:\/(?:i\/web|[^/]+)\/status\/(\d+)(?:.*)?)?$/;
-const youtubeRegex = /^https?:\/\/(?:www\.|m\.)?youtube\.com\/(?:watch\?v=|embed\/|v\/|youtu\.be\/)([a-zA-Z0-9_-]{11})(?:\?.*)?$/;
+const youtubeRegex = /^https?:\/\/(?:www\.|m\.|music\.)?(?:youtube\.com|youtu\.be)\//;
+const extractYouTubeVideoId = (url) => {
+  if (url.includes("youtu.be/")) {
+    const match = url.match(/youtu\.be\/([a-zA-Z0-9_-]{11})/);
+    return match ? match[1] : null;
+  }
+  if (url.includes("youtube.com/")) {
+    const watchMatch = url.match(/[?&]v=([a-zA-Z0-9_-]{11})/);
+    if (watchMatch) return watchMatch[1];
+    const embedMatch = url.match(/\/(?:embed|v|shorts)\/([a-zA-Z0-9_-]{11})/);
+    if (embedMatch) return embedMatch[1];
+  }
+  return null;
+};
 const userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36";
 const normalizeURL = (url) => {
   if (twitterRegex.test(url)) return url;
@@ -656,8 +669,7 @@ const snapsave = async (url) => {
         const homeHtml = await response2.text();
         const load2 = await getCheerioLoad();
         const $2 = load2(homeHtml);
-        const videoIdMatch = url.match(youtubeRegex);
-        const videoId = videoIdMatch ? videoIdMatch[1] : "";
+        const videoId = extractYouTubeVideoId(url);
         if (!videoId) {
           return { success: false, message: "Invalid YouTube URL" };
         }

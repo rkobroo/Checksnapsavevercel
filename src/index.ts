@@ -112,7 +112,7 @@ function getQualityLabel(quality: number): string {
   if (quality >= 240) return "Very Low (240p)";
   return "Standard";
 }
-import { facebookRegex, fixThumbnail, instagramRegex, normalizeURL, tiktokRegex, twitterRegex, youtubeRegex, userAgent } from "./utils";
+import { facebookRegex, fixThumbnail, instagramRegex, normalizeURL, tiktokRegex, twitterRegex, youtubeRegex, extractYouTubeVideoId, userAgent } from "./utils";
 import type { SnapSaveDownloaderData, SnapSaveDownloaderMedia, SnapSaveDownloaderResponse } from "./types";
 import { decryptSnapSave, decryptSnaptik } from "./decrypter";
 
@@ -304,9 +304,8 @@ export const snapsave = async (url: string): Promise<SnapSaveDownloaderResponse>
         const load = await getCheerioLoad();
         const $ = load(homeHtml);
         
-        // Extract YouTube video ID from URL
-        const videoIdMatch = url.match(youtubeRegex);
-        const videoId = videoIdMatch ? videoIdMatch[1] : '';
+        // Extract YouTube video ID from URL using the new function
+        const videoId = extractYouTubeVideoId(url);
         
         if (!videoId) {
           return { success: false, message: "Invalid YouTube URL" };

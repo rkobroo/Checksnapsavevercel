@@ -2,7 +2,31 @@ export const facebookRegex = /^https?:\/\/(?:www\.|web\.|m\.)?facebook\.com\/(wa
 export const instagramRegex = /^https?:\/\/(?:www\.)?instagram\.com\/(?:p|reel|reels|tv|stories|share)\/([^/?#&]+).*/;
 export const tiktokRegex = /^https?:\/\/(?:www\.|m\.|vm\.|vt\.)?tiktok\.com\/(?:@[^/]+\/(?:video|photo)\/\d+|v\/\d+|t\/[\w]+|[\w]+)\/?/;
 export const twitterRegex = /^https:\/\/(?:x|twitter)\.com(?:\/(?:i\/web|[^/]+)\/status\/(\d+)(?:.*)?)?$/;
-export const youtubeRegex = /^https?:\/\/(?:www\.|m\.)?youtube\.com\/(?:watch\?v=|embed\/|v\/|youtu\.be\/)([a-zA-Z0-9_-]{11})(?:\?.*)?$/;
+export const youtubeRegex = /^https?:\/\/(?:www\.|m\.|music\.)?(?:youtube\.com|youtu\.be)\//;
+
+/**
+ * Extract YouTube video ID from various URL formats
+ */
+export const extractYouTubeVideoId = (url: string): string | null => {
+  // Handle youtu.be format
+  if (url.includes('youtu.be/')) {
+    const match = url.match(/youtu\.be\/([a-zA-Z0-9_-]{11})/);
+    return match ? match[1] : null;
+  }
+  
+  // Handle youtube.com format
+  if (url.includes('youtube.com/')) {
+    // Check for watch?v= format
+    const watchMatch = url.match(/[?&]v=([a-zA-Z0-9_-]{11})/);
+    if (watchMatch) return watchMatch[1];
+    
+    // Check for embed/video ID format
+    const embedMatch = url.match(/\/(?:embed|v|shorts)\/([a-zA-Z0-9_-]{11})/);
+    if (embedMatch) return embedMatch[1];
+  }
+  
+  return null;
+};
 
 export const userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36";
 
