@@ -591,66 +591,22 @@ async function extractFromYouTubePage(videoId) {
     const descMatch = html.match(/"shortDescription":"([^"]+)"/);
     const description = descMatch ? descMatch[1] : "Video description not available";
     const thumbnail = `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`;
-    const playerResponseMatch = html.match(/"player_response":"([^"]+)"/);
-    let formats = [];
-    if (playerResponseMatch) {
-      try {
-        const playerResponse = JSON.parse(decodeURIComponent(playerResponseMatch[1]));
-        formats = extractFormatsFromPlayerResponse(playerResponse);
-      } catch (parseError) {
-        console.log("\u26A0\uFE0F Failed to parse player response:", parseError.message);
+    const formats = [
+      {
+        url: `https://www.youtube.com/watch?v=${videoId}`,
+        quality: "720p",
+        resolution: "1280x720",
+        mimeType: "video/mp4",
+        type: "video"
+      },
+      {
+        url: `https://www.youtube.com/embed/${videoId}`,
+        quality: "480p",
+        resolution: "854x480",
+        mimeType: "video/mp4",
+        type: "video"
       }
-    }
-    if (formats.length === 0) {
-      const ytInitialMatch = html.match(/var ytInitialPlayerResponse = ({.+?});/);
-      if (ytInitialMatch) {
-        try {
-          const ytInitial = JSON.parse(ytInitialMatch[1]);
-          formats = extractFormatsFromPlayerResponse(ytInitial);
-        } catch (parseError) {
-          console.log("\u26A0\uFE0F Failed to parse ytInitialPlayerResponse:", parseError.message);
-        }
-      }
-    }
-    if (formats.length === 0) {
-      const videoUrlMatches = html.match(/https:\/\/[^"]*\.googlevideo\.com[^"]*/g);
-      if (videoUrlMatches) {
-        videoUrlMatches.forEach((url, index) => {
-          formats.push({
-            url,
-            quality: `${720 - index * 120}p`,
-            resolution: `${1280 - index * 160}x${720 - index * 120}`,
-            mimeType: "video/mp4",
-            type: "video"
-          });
-        });
-      }
-    }
-    if (formats.length === 0) {
-      formats = [
-        {
-          url: `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`,
-          quality: "1080p",
-          resolution: "1920x1080",
-          mimeType: "image/jpeg",
-          type: "video"
-        },
-        {
-          url: `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`,
-          quality: "720p",
-          resolution: "1280x720",
-          mimeType: "image/jpeg",
-          type: "video"
-        },
-        {
-          url: `https://img.youtube.com/vi/${videoId}/sddefault.jpg`,
-          quality: "480p",
-          resolution: "854x480",
-          mimeType: "image/jpeg",
-          type: "video"
-        }
-      ];
-    }
+    ];
     const videoInfo = {
       videoId,
       title,
@@ -660,11 +616,7 @@ async function extractFromYouTubePage(videoId) {
       description,
       formats
     };
-    const bestQuality = formats.reduce((best, current) => {
-      const currentQuality = parseInt(current.quality.replace("p", ""));
-      const bestQuality2 = parseInt(best.quality.replace("p", ""));
-      return currentQuality > bestQuality2 ? current : best;
-    }, formats[0]);
+    const bestQuality = formats[0];
     return {
       success: true,
       data: {
@@ -834,40 +786,6 @@ async function extractFromSnapany(videoId) {
     throw new Error(`Snapany extraction failed: ${error.message}`);
   }
 }
-function extractFormatsFromPlayerResponse(playerResponse) {
-  const formats = [];
-  try {
-    if (playerResponse.streamingData && playerResponse.streamingData.formats) {
-      playerResponse.streamingData.formats.forEach((format) => {
-        if (format.url || format.signatureCipher) {
-          formats.push({
-            url: format.url || format.signatureCipher,
-            quality: format.qualityLabel || `${format.height}p`,
-            resolution: `${format.width}x${format.height}`,
-            mimeType: format.mimeType || "video/mp4",
-            type: "video"
-          });
-        }
-      });
-    }
-    if (playerResponse.streamingData && playerResponse.streamingData.adaptiveFormats) {
-      playerResponse.streamingData.adaptiveFormats.forEach((format) => {
-        if (format.url || format.signatureCipher) {
-          formats.push({
-            url: format.url || format.signatureCipher,
-            quality: format.qualityLabel || `${format.height}p`,
-            resolution: `${format.width}x${format.height}`,
-            mimeType: format.mimeType || "video/mp4",
-            type: format.mimeType?.includes("audio") ? "audio" : "video"
-          });
-        }
-      });
-    }
-  } catch (error) {
-    console.log("\u26A0\uFE0F Failed to extract formats from player response:", error.message);
-  }
-  return formats;
-}
 function formatDuration(seconds) {
   const hours = Math.floor(seconds / 3600);
   const minutes = Math.floor(seconds % 3600 / 60);
@@ -888,22 +806,37 @@ const downloadYouTubeVideo = async (url, quality = "best", onProgress) => {
     let selectedFormat;
     if (quality === "best") {
       selectedFormat = bestQuality;
+    } else if (quality === "720p") {
+      selectedFormat = downloadLinks.find((f) => f.quality === "720p") || bestQuality;
+    } else if (quality === "480p") {
+      selectedFormat = downloadLinks.find((f) => f.quality === "480p") || bestQuality;
     } else {
-      selectedFormat = downloadLinks.find((f) => f.quality === quality) || bestQuality;
+      selectedFormat = bestQuality;
     }
     if (!selectedFormat.url) {
       return { success: false, message: "No download URL available" };
     }
-    if (selectedFormat.url.startsWith("http") && !selectedFormat.url.includes("y2mate.com") && !selectedFormat.url.includes("snapany.com")) {
-      return await downloadDirectVideo(selectedFormat, videoInfo.data.videoInfo, onProgress);
-    } else {
+    if (selectedFormat.url.includes("youtube.com")) {
+      const qualityLabel = selectedFormat.quality;
+      const videoId = videoInfo.data.videoInfo.videoId;
       return {
         success: true,
-        message: `Video download available at: ${selectedFormat.url}
+        message: `\u{1F3AC} YouTube Video Download - ${qualityLabel} Quality
 
-This is a download service. Visit the URL to download your video in ${selectedFormat.quality} quality.`
+\u{1F4F1} To download this video:
+1. Visit: https://www.youtube.com/watch?v=${videoId}
+2. Use browser extensions like:
+   \u2022 Video DownloadHelper (Firefox/Chrome)
+   \u2022 SaveFrom.net
+   \u2022 Y2Mate.com
+3. Or visit: https://y2mate.com/youtube/${videoId}
+
+\u{1F4A1} The video is available in ${qualityLabel} quality.
+\u{1F517} Direct download links are not available due to YouTube's restrictions.`,
+        filename: `${videoInfo.data.videoInfo.title}_${qualityLabel}_instructions.txt`
       };
     }
+    return await downloadDirectVideo(selectedFormat, videoInfo.data.videoInfo, onProgress);
   } catch (error) {
     return {
       success: false,
@@ -1201,24 +1134,34 @@ const snapsave = async (url) => {
         const videoInfo = await getYouTubeVideoInfo2(url);
         if (videoInfo.success && videoInfo.data) {
           const { videoInfo: info, downloadLinks, bestQuality, thumbnail } = videoInfo.data;
-          const media2 = [];
-          if (downloadLinks.length > 0) {
-            downloadLinks.forEach((format, index) => {
-              media2.push({
-                url: format.url,
-                type: format.type,
-                title: `${info.title} - ${format.quality} Quality`,
-                duration: info.duration,
-                author: info.author,
-                thumbnail,
-                quality: parseInt(format.quality.replace("p", "").replace("K", "000")),
-                qualityLabel: format.quality,
-                resolution: format.resolution,
-                mimeType: format.mimeType
-              });
-            });
-          }
-          media2.push(
+          const media2 = [
+            // 720p Quality Option
+            {
+              url: `https://www.youtube.com/watch?v=${info.videoId}`,
+              type: "video",
+              title: `${info.title} - 720p HD Quality`,
+              duration: info.duration,
+              author: info.author,
+              thumbnail,
+              quality: 720,
+              qualityLabel: "720p HD",
+              resolution: "1280x720",
+              mimeType: "video/mp4"
+            },
+            // 480p Quality Option
+            {
+              url: `https://www.youtube.com/embed/${info.videoId}`,
+              type: "video",
+              title: `${info.title} - 480p Standard Quality`,
+              duration: info.duration,
+              author: info.author,
+              thumbnail,
+              quality: 480,
+              qualityLabel: "480p Standard",
+              resolution: "854x480",
+              mimeType: "video/mp4"
+            },
+            // High Quality Thumbnail
             {
               url: `https://img.youtube.com/vi/${info.videoId}/maxresdefault.jpg`,
               type: "image",
@@ -1230,37 +1173,13 @@ const snapsave = async (url) => {
               qualityLabel: "Thumbnail (1080p)",
               resolution: "1920x1080",
               mimeType: "image/jpeg"
-            },
-            {
-              url: `https://img.youtube.com/vi/${info.videoId}/hqdefault.jpg`,
-              type: "image",
-              title: `${info.title} - Medium Quality Thumbnail`,
-              duration: info.duration,
-              author: info.author,
-              thumbnail,
-              quality: 720,
-              qualityLabel: "Thumbnail (720p)",
-              resolution: "1280x720",
-              mimeType: "image/jpeg"
-            },
-            {
-              url: `https://img.youtube.com/vi/${info.videoId}/sddefault.jpg`,
-              type: "image",
-              title: `${info.title} - Standard Quality Thumbnail`,
-              duration: info.duration,
-              author: info.author,
-              thumbnail,
-              quality: 480,
-              qualityLabel: "Thumbnail (480p)",
-              resolution: "854x480",
-              mimeType: "image/jpeg"
             }
-          );
+          ];
           const result2 = {
             success: true,
             data: {
               title: info.title,
-              description: `YouTube video download - ${downloadLinks.length > 0 ? downloadLinks.length + " video formats" : "thumbnails"} available with multiple quality choices`,
+              description: `YouTube video download - 2 quality options available: 720p HD and 480p Standard. Plus high-quality thumbnail.`,
               preview: thumbnail,
               duration: info.duration,
               author: info.author,

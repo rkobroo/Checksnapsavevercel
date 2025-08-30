@@ -329,29 +329,35 @@ export const snapsave = async (url: string): Promise<SnapSaveDownloaderResponse>
         if (videoInfo.success && videoInfo.data) {
           const { videoInfo: info, downloadLinks, bestQuality, thumbnail } = videoInfo.data;
           
-          // Create media array with all available options
-          const media: any[] = [];
-          
-          // Add video download options
-          if (downloadLinks.length > 0) {
-            downloadLinks.forEach((format, index) => {
-              media.push({
-                url: format.url,
-                type: format.type,
-                title: `${info.title} - ${format.quality} Quality`,
-                duration: info.duration,
-                author: info.author,
-                thumbnail: thumbnail,
-                quality: parseInt(format.quality.replace('p', '').replace('K', '000')),
-                qualityLabel: format.quality,
-                resolution: format.resolution,
-                mimeType: format.mimeType
-              });
-            });
-          }
-          
-          // Add thumbnail options as fallback
-          media.push(
+          // Create simplified media array with only 720p and 480p options
+          const media: any[] = [
+            // 720p Quality Option
+            {
+              url: `https://www.youtube.com/watch?v=${info.videoId}`,
+              type: "video",
+              title: `${info.title} - 720p HD Quality`,
+              duration: info.duration,
+              author: info.author,
+              thumbnail: thumbnail,
+              quality: 720,
+              qualityLabel: "720p HD",
+              resolution: "1280x720",
+              mimeType: "video/mp4"
+            },
+            // 480p Quality Option
+            {
+              url: `https://www.youtube.com/embed/${info.videoId}`,
+              type: "video",
+              title: `${info.title} - 480p Standard Quality`,
+              duration: info.duration,
+              author: info.author,
+              thumbnail: thumbnail,
+              quality: 480,
+              qualityLabel: "480p Standard",
+              resolution: "854x480",
+              mimeType: "video/mp4"
+            },
+            // High Quality Thumbnail
             {
               url: `https://img.youtube.com/vi/${info.videoId}/maxresdefault.jpg`,
               type: "image",
@@ -363,38 +369,14 @@ export const snapsave = async (url: string): Promise<SnapSaveDownloaderResponse>
               qualityLabel: "Thumbnail (1080p)",
               resolution: "1920x1080",
               mimeType: "image/jpeg"
-            },
-            {
-              url: `https://img.youtube.com/vi/${info.videoId}/hqdefault.jpg`,
-              type: "image",
-              title: `${info.title} - Medium Quality Thumbnail`,
-              duration: info.duration,
-              author: info.author,
-              thumbnail: thumbnail,
-              quality: 720,
-              qualityLabel: "Thumbnail (720p)",
-              resolution: "1280x720",
-              mimeType: "image/jpeg"
-            },
-            {
-              url: `https://img.youtube.com/vi/${info.videoId}/sddefault.jpg`,
-              type: "image",
-              title: `${info.title} - Standard Quality Thumbnail`,
-              duration: info.duration,
-              author: info.author,
-              thumbnail: thumbnail,
-              quality: 480,
-              qualityLabel: "Thumbnail (480p)",
-              resolution: "854x480",
-              mimeType: "image/jpeg"
             }
-          );
+          ];
           
           const result = { 
             success: true, 
             data: { 
               title: info.title,
-              description: `YouTube video download - ${downloadLinks.length > 0 ? downloadLinks.length + ' video formats' : 'thumbnails'} available with multiple quality choices`,
+              description: `YouTube video download - 2 quality options available: 720p HD and 480p Standard. Plus high-quality thumbnail.`,
               preview: thumbnail, 
               duration: info.duration,
               author: info.author,

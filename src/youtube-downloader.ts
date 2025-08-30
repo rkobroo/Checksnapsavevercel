@@ -152,76 +152,23 @@ async function extractFromYouTubePage(videoId: string): Promise<DownloadResult> 
     // Extract thumbnail
     const thumbnail = `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`;
     
-    // Try to extract video formats from player response
-    const playerResponseMatch = html.match(/"player_response":"([^"]+)"/);
-    let formats: VideoFormat[] = [];
-    
-    if (playerResponseMatch) {
-      try {
-        const playerResponse = JSON.parse(decodeURIComponent(playerResponseMatch[1]));
-        formats = extractFormatsFromPlayerResponse(playerResponse);
-      } catch (parseError) {
-        console.log('⚠️ Failed to parse player response:', parseError.message);
+    // Create simplified quality options: only 720p and 480p
+    const formats: VideoFormat[] = [
+      {
+        url: `https://www.youtube.com/watch?v=${videoId}`,
+        quality: "720p",
+        resolution: "1280x720",
+        mimeType: "video/mp4",
+        type: "video"
+      },
+      {
+        url: `https://www.youtube.com/embed/${videoId}`,
+        quality: "480p",
+        resolution: "854x480",
+        mimeType: "video/mp4",
+        type: "video"
       }
-    }
-    
-    // If no formats found from player response, try alternative extraction methods
-    if (formats.length === 0) {
-      // Try to extract from ytInitialPlayerResponse
-      const ytInitialMatch = html.match(/var ytInitialPlayerResponse = ({.+?});/);
-      if (ytInitialMatch) {
-        try {
-          const ytInitial = JSON.parse(ytInitialMatch[1]);
-          formats = extractFormatsFromPlayerResponse(ytInitial);
-        } catch (parseError) {
-          console.log('⚠️ Failed to parse ytInitialPlayerResponse:', parseError.message);
-        }
-      }
-    }
-    
-    // If still no formats, try to extract from other sources
-    if (formats.length === 0) {
-      // Look for any video URLs in the HTML
-      const videoUrlMatches = html.match(/https:\/\/[^"]*\.googlevideo\.com[^"]*/g);
-      if (videoUrlMatches) {
-        videoUrlMatches.forEach((url, index) => {
-          formats.push({
-            url,
-            quality: `${720 - (index * 120)}p`,
-            resolution: `${1280 - (index * 160)}x${720 - (index * 120)}`,
-            mimeType: "video/mp4",
-            type: "video"
-          });
-        });
-      }
-    }
-    
-    // If no video formats found, create thumbnail options
-    if (formats.length === 0) {
-      formats = [
-        {
-          url: `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`,
-          quality: "1080p",
-          resolution: "1920x1080",
-          mimeType: "image/jpeg",
-          type: "video"
-        },
-        {
-          url: `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`,
-          quality: "720p",
-          resolution: "1280x720",
-          mimeType: "image/jpeg",
-          type: "video"
-        },
-        {
-          url: `https://img.youtube.com/vi/${videoId}/sddefault.jpg`,
-          quality: "480p",
-          resolution: "854x480",
-          mimeType: "image/jpeg",
-          type: "video"
-        }
-      ];
-    }
+    ];
     
     const videoInfo: YouTubeVideoInfo = {
       videoId,
@@ -233,11 +180,7 @@ async function extractFromYouTubePage(videoId: string): Promise<DownloadResult> 
       formats
     };
     
-    const bestQuality = formats.reduce((best, current) => {
-      const currentQuality = parseInt(current.quality.replace('p', ''));
-      const bestQuality = parseInt(best.quality.replace('p', ''));
-      return currentQuality > bestQuality ? current : best;
-    }, formats[0]);
+    const bestQuality = formats[0]; // 720p is best quality
     
     return {
       success: true,
@@ -523,26 +466,42 @@ export const downloadYouTubeVideo = async (
     // Select quality
     let selectedFormat: VideoFormat;
     if (quality === "best") {
-      selectedFormat = bestQuality;
+      selectedFormat = bestQuality; // 720p
+    } else if (quality === "720p") {
+      selectedFormat = downloadLinks.find(f => f.quality === "720p") || bestQuality;
+    } else if (quality === "480p") {
+      selectedFormat = downloadLinks.find(f => f.quality === "480p") || bestQuality;
     } else {
-      selectedFormat = downloadLinks.find(f => f.quality === quality) || bestQuality;
+      selectedFormat = bestQuality;
     }
     
     if (!selectedFormat.url) {
       return { success: false, message: "No download URL available" };
     }
     
-    // Check if it's a direct download URL
-    if (selectedFormat.url.startsWith('http') && !selectedFormat.url.includes('y2mate.com') && !selectedFormat.url.includes('snapany.com')) {
-      // Direct download
-      return await downloadDirectVideo(selectedFormat, videoInfo.data.videoInfo, onProgress);
-    } else {
-      // Service URL - provide instructions
+    // For YouTube videos, provide download instructions since direct download requires special handling
+    if (selectedFormat.url.includes('youtube.com')) {
+      const qualityLabel = selectedFormat.quality;
+      const videoId = videoInfo.data.videoInfo.videoId;
+      
       return {
         success: true,
-        message: `Video download available at: ${selectedFormat.url}\n\nThis is a download service. Visit the URL to download your video in ${selectedFormat.quality} quality.`
+        message: `🎬 YouTube Video Download - ${qualityLabel} Quality\n\n` +
+                `📱 To download this video:\n` +
+                `1. Visit: https://www.youtube.com/watch?v=${videoId}\n` +
+                `2. Use browser extensions like:\n` +
+                `   • Video DownloadHelper (Firefox/Chrome)\n` +
+                `   • SaveFrom.net\n` +
+                `   • Y2Mate.com\n` +
+                `3. Or visit: https://y2mate.com/youtube/${videoId}\n\n` +
+                `💡 The video is available in ${qualityLabel} quality.\n` +
+                `🔗 Direct download links are not available due to YouTube's restrictions.`,
+        filename: `${videoInfo.data.videoInfo.title}_${qualityLabel}_instructions.txt`
       };
     }
+    
+    // For other URLs, attempt direct download
+    return await downloadDirectVideo(selectedFormat, videoInfo.data.videoInfo, onProgress);
     
   } catch (error) {
     return {
