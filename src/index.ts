@@ -1,7 +1,29 @@
 // Cache for cheerio loader and responses
 let cheerioLoad: ((html: string) => ReturnType<typeof import("cheerio")["load"]>) | null = null;
 const responseCache = new Map<string, { data: any; timestamp: number }>();
-const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
+const CACHE_DURATION = 1 * 60 * 1000; // 1 minute (reduced from 5 minutes)
+
+// Function to clear the response cache
+export const clearResponseCache = () => {
+  responseCache.clear();
+  console.log('🧹 Response cache cleared');
+};
+
+// Function to get cache status
+export const getCacheStatus = () => {
+  const now = Date.now();
+  const cacheEntries = Array.from(responseCache.entries()).map(([key, value]) => ({
+    key,
+    age: Math.round((now - value.timestamp) / 1000),
+    isValid: (now - value.timestamp) < CACHE_DURATION
+  }));
+  
+  return {
+    totalEntries: responseCache.size,
+    cacheDuration: CACHE_DURATION / 1000, // in seconds
+    entries: cacheEntries
+  };
+};
 
 async function getCheerioLoad () {
   if (!cheerioLoad) {

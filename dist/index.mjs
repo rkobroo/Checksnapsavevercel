@@ -462,7 +462,25 @@ const getDownloadInfo = async (url) => {
 
 let cheerioLoad = null;
 const responseCache = /* @__PURE__ */ new Map();
-const CACHE_DURATION = 5 * 60 * 1e3;
+const CACHE_DURATION = 1 * 60 * 1e3;
+const clearResponseCache = () => {
+  responseCache.clear();
+  console.log("\u{1F9F9} Response cache cleared");
+};
+const getCacheStatus = () => {
+  const now = Date.now();
+  const cacheEntries = Array.from(responseCache.entries()).map(([key, value]) => ({
+    key,
+    age: Math.round((now - value.timestamp) / 1e3),
+    isValid: now - value.timestamp < CACHE_DURATION
+  }));
+  return {
+    totalEntries: responseCache.size,
+    cacheDuration: CACHE_DURATION / 1e3,
+    // in seconds
+    entries: cacheEntries
+  };
+};
 async function getCheerioLoad() {
   if (!cheerioLoad) {
     const mod = await import('cheerio');
@@ -1231,4 +1249,4 @@ const snapsave = async (url) => {
   }
 };
 
-export { batchDownload, downloadAllMedia, downloadAllPhotos, downloadMultipleTimes, enhancedDownload, getDownloadInfo, snapsave };
+export { batchDownload, clearResponseCache, downloadAllMedia, downloadAllPhotos, downloadMultipleTimes, enhancedDownload, getCacheStatus, getDownloadInfo, snapsave };

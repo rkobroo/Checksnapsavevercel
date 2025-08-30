@@ -134,6 +134,17 @@ declare const downloadMultipleTimes: (url: string, count?: number) => Promise<{
  */
 declare const getDownloadInfo: (url: string) => Promise<EnhancedDownloadResponse>;
 
+declare const clearResponseCache: () => void;
+declare const getCacheStatus: () => {
+    totalEntries: number;
+    cacheDuration: number;
+    entries: {
+        key: string;
+        age: number;
+        isValid: boolean;
+    }[];
+};
+
 declare const snapsave: (url: string) => Promise<SnapSaveDownloaderResponse>;
 
-export { batchDownload, downloadAllMedia, downloadAllPhotos, downloadMultipleTimes, enhancedDownload, getDownloadInfo, snapsave };
+export { batchDownload, clearResponseCache, downloadAllMedia, downloadAllPhotos, downloadMultipleTimes, enhancedDownload, getCacheStatus, getDownloadInfo, snapsave };
